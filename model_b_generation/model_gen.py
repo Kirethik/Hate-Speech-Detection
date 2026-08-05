@@ -13,6 +13,7 @@ QLoRA config (Section 5 of the blueprint):
   - Only the adapter weights are trained; the base is frozen
 """
 
+import os
 import torch
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model, PeftModel, TaskType
