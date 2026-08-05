@@ -14,6 +14,12 @@ checkpoints/**
 !checkpoints/**/
 # keep the small evaluation metrics that live alongside the weights
 !checkpoints/**/*.json
+
+# ---- Model B checkpoints (LoRA adapters, ~5-20 MB) ----
+checkpoints_gen/**
+!checkpoints_gen/**/
+!checkpoints_gen/**/*.json
+!checkpoints_gen/**/*.md
 *.pt
 *.pth
 *.bin
