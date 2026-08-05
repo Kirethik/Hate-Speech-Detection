@@ -1,0 +1,51 @@
+{
+  "threshold": 0.7100000000000002,
+  "sanity_correct": 12,
+  "sanity_total": 12,
+  "identity_false_positives": 0,
+  "identity_cases": 5,
+  "catch_rate_on_sampled_abuse": 0.8077485380116959,
+  "perturbations": [
+    {
+      "perturbation": "leet",
+      "flip_rate_of_perturbed": 0.3155818540433925,
+      "n_flipped": 160,
+      "n_actually_perturbed": 507,
+      "n_candidates": 1105,
+      "mean_prob_drop": 0.18137122690677643
+    },
+    {
+      "perturbation": "spaced",
+      "flip_rate_of_perturbed": 0.1257918552036199,
+      "n_flipped": 139,
+      "n_actually_perturbed": 1105,
+      "n_candidates": 1105,
+      "mean_prob_drop": 0.07591713219881058
+    },
+    {
+      "perturbation": "elongate",
+      "flip_rate_of_perturbed": 0.09430255402750491,
+      "n_flipped": 48,
+      "n_actually_perturbed": 509,
+      "n_candidates": 1105,
+      "mean_prob_drop": 0.0527096651494503
+    },
+    {
+      "perturbation": "punct",
+      "flip_rate_of_perturbed": 0.09267840593141798,
+      "n_flipped": 100,
+      "n_actually_perturbed": 1079,
+      "n_candidates": 1105,
+      "mean_prob_drop": 0.05185181647539139
+    }
+  ],
+  "leet_flip_rate_by_language": {
+    "en": 0.5909090909090909,
+    "hi": 0.0,
+    "kn": 0.016129032258064516,
+    "ml": 0.11764705882352941,
+    "ta": 0.6,
+    "te": 0.02857142857142857,
+    "ur_roman": 0.14388489208633093
+  }
+}

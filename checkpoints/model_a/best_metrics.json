@@ -1,0 +1,111 @@
+{
+  "threshold": 0.7100000000000002,
+  "hate_macro_f1": 0.853875782839711,
+  "hate_accuracy": 0.8561093247588425,
+  "hate_roc_auc": 0.934361710266686,
+  "hate_per_class": {
+    "not_abusive": {
+      "precision": 0.8568616422947132,
+      "recall": 0.8875618992135159,
+      "f1": 0.871941622549721,
+      "support": 6866
+    },
+    "abusive": {
+      "precision": 0.8551051051051051,
+      "recall": 0.8173663437387872,
+      "f1": 0.835809943129701,
+      "support": 5574
+    }
+  },
+  "hate_by_language": {
+    "en": {
+      "macro_f1": 0.7677535541740983,
+      "n": 1916
+    },
+    "hi": {
+      "macro_f1": 0.8490974790245147,
+      "n": 1617
+    },
+    "kn": {
+      "macro_f1": 0.8577831882105578,
+      "n": 1871
+    },
+    "ml": {
+      "macro_f1": 0.8857428157194842,
+      "n": 1700
+    },
+    "ta": {
+      "macro_f1": 0.8274395243952439,
+      "n": 3523
+    },
+    "te": {
+      "macro_f1": 0.9044685833721098,
+      "n": 1452
+    },
+    "ur_roman": {
+      "macro_f1": 0.8997160318538182,
+      "n": 361
+    }
+  },
+  "hate_by_source": {
+    "dravidiancodemix": {
+      "macro_f1": 0.7436232353525115,
+      "n": 2804
+    },
+    "hatexplain": {
+      "macro_f1": 0.7677535541740983,
+      "n": 1916
+    },
+    "macd": {
+      "macro_f1": 0.8757417851081812,
+      "n": 7359
+    },
+    "ruhsold": {
+      "macro_f1": 0.8997160318538182,
+      "n": 361
+    }
+  },
+  "severity_macro_f1": 0.6570674853668498,
+  "severity_n": 2277,
+  "target_macro_f1": 0.5460696549039948,
+  "target_per_class": {
+    "none": {
+      "f1": 0.6630094043887147,
+      "support": 722
+    },
+    "religion": {
+      "f1": 0.829971181556196,
+      "support": 338
+    },
+    "gender": {
+      "f1": 0.6657223796033994,
+      "support": 308
+    },
+    "caste_ethnicity": {
+      "f1": 0.7822222222222223,
+      "support": 420
+    },
+    "disability": {
+      "f1": 0.0,
+      "support": 2
+    },
+    "political": {
+      "f1": 0.0,
+      "support": 0
+    },
+    "nationality_migrant": {
+      "f1": 0.6289308176100629,
+      "support": 63
+    },
+    "other": {
+      "f1": 0.25263157894736843,
+      "support": 63
+    }
+  },
+  "target_n": 1916,
+  "rationale_token_f1": 0.750692396509203,
+  "rationale_n_tokens": 34793,
+  "epoch": 2,
+  "step": 7929,
+  "global_step": 15861
+}

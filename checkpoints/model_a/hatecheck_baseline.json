@@ -1,0 +1,182 @@
+{
+  "threshold": 0.7100000000000002,
+  "overall": 0.6150751072961373,
+  "hateful_accuracy": 0.6129535700351151,
+  "non_hateful_accuracy": 0.6197424892703862,
+  "per_functionality": [
+    {
+      "functionality": "spell_space_add_h",
+      "expects": "hateful",
+      "n": 173,
+      "accuracy": 0.12138728323699421
+    },
+    {
+      "functionality": "spell_char_del_h",
+      "expects": "hateful",
+      "n": 140,
+      "accuracy": 0.45714285714285713
+    },
+    {
+      "functionality": "derog_neg_emote_h",
+      "expects": "hateful",
+      "n": 140,
+      "accuracy": 0.4642857142857143
+    },
+    {
+      "functionality": "spell_leet_h",
+      "expects": "hateful",
+      "n": 173,
+      "accuracy": 0.4682080924855491
+    },
+    {
+      "functionality": "derog_impl_h",
+      "expects": "hateful",
+      "n": 140,
+      "accuracy": 0.4857142857142857
+    },
+    {
+      "functionality": "spell_char_swap_h",
+      "expects": "hateful",
+      "n": 133,
+      "accuracy": 0.5037593984962406
+    },
+    {
+      "functionality": "negate_pos_h",
+      "expects": "hateful",
+      "n": 140,
+      "accuracy": 0.5285714285714286
+    },
+    {
+      "functionality": "derog_neg_attrib_h",
+      "expects": "hateful",
+      "n": 140,
+      "accuracy": 0.6642857142857143
+    },
+    {
+      "functionality": "spell_space_del_h",
+      "expects": "hateful",
+      "n": 141,
+      "accuracy": 0.6737588652482269
+    },
+    {
+      "functionality": "ref_subs_clause_h",
+      "expects": "hateful",
+      "n": 140,
+      "accuracy": 0.6785714285714286
+    },
+    {
+      "functionality": "threat_dir_h",
+      "expects": "hateful",
+      "n": 133,
+      "accuracy": 0.6992481203007519
+    },
+    {
+      "functionality": "ref_subs_sent_h",
+      "expects": "hateful",
+      "n": 133,
+      "accuracy": 0.7142857142857143
+    },
+    {
+      "functionality": "phrase_question_h",
+      "expects": "hateful",
+      "n": 140,
+      "accuracy": 0.7285714285714285
+    },
+    {
+      "functionality": "derog_dehum_h",
+      "expects": "hateful",
+      "n": 140,
+      "accuracy": 0.7714285714285715
+    },
+    {
+      "functionality": "threat_norm_h",
+      "expects": "hateful",
+      "n": 140,
+      "accuracy": 0.7928571428571428
+    },
+    {
+      "functionality": "phrase_opinion_h",
+      "expects": "hateful",
+      "n": 133,
+      "accuracy": 0.7969924812030075
+    },
+    {
+      "functionality": "slur_h",
+      "expects": "hateful",
+      "n": 144,
+      "accuracy": 0.8125
+    },
+    {
+      "functionality": "profanity_h",
+      "expects": "hateful",
+      "n": 140,
+      "accuracy": 0.8285714285714286
+    },
+    {
+      "functionality": "slur_homonym_nh",
+      "expects": "non-hateful",
+      "n": 30,
+      "accuracy": 0.26666666666666666
+    },
+    {
+      "functionality": "counter_quote_nh",
+      "expects": "non-hateful",
+      "n": 173,
+      "accuracy": 0.30057803468208094
+    },
+    {
+      "functionality": "negate_neg_nh",
+      "expects": "non-hateful",
+      "n": 133,
+      "accuracy": 0.3157894736842105
+    },
+    {
+      "functionality": "counter_ref_nh",
+      "expects": "non-hateful",
+      "n": 141,
+      "accuracy": 0.40425531914893614
+    },
+    {
+      "functionality": "target_group_nh",
+      "expects": "non-hateful",
+      "n": 62,
+      "accuracy": 0.6129032258064516
+    },
+    {
+      "functionality": "slur_reclaimed_nh",
+      "expects": "non-hateful",
+      "n": 81,
+      "accuracy": 0.7283950617283951
+    },
+    {
+      "functionality": "target_indiv_nh",
+      "expects": "non-hateful",
+      "n": 65,
+      "accuracy": 0.7384615384615385
+    },
+    {
+      "functionality": "ident_pos_nh",
+      "expects": "non-hateful",
+      "n": 189,
+      "accuracy": 0.7883597883597884
+    },
+    {
+      "functionality": "ident_neutral_nh",
+      "expects": "non-hateful",
+      "n": 126,
+      "accuracy": 0.9126984126984127
+    },
+    {
+      "functionality": "profanity_nh",
+      "expects": "non-hateful",
+      "n": 100,
+      "accuracy": 0.93
+    },
+    {
+      "functionality": "target_obj_nh",
+      "expects": "non-hateful",
+      "n": 65,
+      "accuracy": 0.9384615384615385
+    }
+  ]
+}

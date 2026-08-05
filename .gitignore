@@ -1,0 +1,90 @@
+# ---- Datasets (too large for git; regenerate with build_dataset.py / prepare_splits.py) ----
+raw_data/
+data/
+data_baseline_4source/
+*.csv
+*.tsv
+*.jsonl
+*.parquet
+*.zip
+*.tar.gz
+
+# ---- Model checkpoints (~1.1 GB each, over GitHub's 100 MB file limit) ----
+checkpoints/**
+!checkpoints/**/
+# keep the small evaluation metrics that live alongside the weights
+!checkpoints/**/*.json
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+
+# ---- Logs and run output ----
+*.log
+runs/
+wandb/
+lightning_logs/
+tensorboard/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ---- Virtual environments ----
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# ---- Testing / coverage ----
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+
+# ---- Notebooks ----
+.ipynb_checkpoints/
+
+# ---- Caches (HuggingFace, torch, etc.) ----
+.cache/
+.hf_cache/
+transformers_cache/
+
+# ---- Secrets / local config ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
