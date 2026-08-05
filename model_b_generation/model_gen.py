@@ -17,7 +17,7 @@ import torch
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model, PeftModel, TaskType
 
-def load_model_for_training(model_name="google/mt5-small", lora_r=8):
+def load_model_for_training(model_name="google/mt5-small", lora_r=8, resume_checkpoint=None):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     
     device_map = "auto" if torch.cuda.is_available() else None
@@ -36,15 +36,19 @@ def load_model_for_training(model_name="google/mt5-small", lora_r=8):
     else:
         model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
         
-    lora_config = LoraConfig(
-        r=lora_r,
-        lora_alpha=32,
-        target_modules=['q', 'v'],
-        lora_dropout=0.05,
-        task_type=TaskType.SEQ_2_SEQ_LM
-    )
-    
-    model = get_peft_model(model, lora_config)
+    if resume_checkpoint and os.path.exists(resume_checkpoint):
+        print(f"Resuming training from checkpoint: {resume_checkpoint}")
+        model = PeftModel.from_pretrained(model, resume_checkpoint, is_trainable=True)
+    else:
+        lora_config = LoraConfig(
+            r=lora_r,
+            lora_alpha=32,
+            target_modules=['q', 'v'],
+            lora_dropout=0.05,
+            task_type=TaskType.SEQ_2_SEQ_LM
+        )
+        model = get_peft_model(model, lora_config)
+        
     model.print_trainable_parameters()
     
     return model, tokenizer

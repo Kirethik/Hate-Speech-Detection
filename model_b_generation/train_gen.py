@@ -19,6 +19,9 @@ import os
 import sys
 from pathlib import Path
 
+# Silence HF symlink warnings on Windows
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
 import torch
 from torch.utils.data import DataLoader
 from transformers import get_cosine_schedule_with_warmup
@@ -41,6 +44,8 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--lora_r", type=int, default=8, help="LoRA rank")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=2, help="Gradient accumulation steps")
+    parser.add_argument("--resume_from_checkpoint", type=str, default=None, help="Path to checkpoint directory to resume from")
+    parser.add_argument("--start_epoch", type=int, default=1, help="Epoch to start training from if resuming")
     return parser.parse_args()
 
 def train():
@@ -51,7 +56,7 @@ def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     
-    model, tokenizer = load_model_for_training(lora_r=args.lora_r)
+    model, tokenizer = load_model_for_training(lora_r=args.lora_r, resume_checkpoint=args.resume_from_checkpoint)
     if not torch.cuda.is_available():
         model.to(device)
         
@@ -78,7 +83,7 @@ def train():
     # Try using modern torch.amp
     scaler = torch.amp.GradScaler("cuda") if torch.cuda.is_available() else None
     
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(args.start_epoch, args.epochs + 1):
         model.train()
         total_train_loss = 0
         optimizer.zero_grad()
