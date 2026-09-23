@@ -1,0 +1,51 @@
+# Civitas AI — Data Configuration
+# Loaded by build_dataset.py. Override any value via the corresponding
+# environment variable (e.g. CIVITAS_SBIC_CAP=20000).
+#
+# per_source_caps:
+#   Max rows to sample from each source. null = use all rows.
+#   English implicit-hate sources are capped so they don't swamp the Indic corpus.
+#
+# per_language_weights:
+#   After capping, rows for thin languages are upsampled by this factor
+#   (implemented as repetition in the training split, NOT in val/test).
+#   1.0 = no upsampling. Increase for languages with < 3,000 training rows.
+#
+# test_only_sources:
+#   Sources that must NEVER enter the training pool.
+#   build_dataset.py asserts this at startup.
+
+per_source_caps:
+  hatexplain: null       # ~20k — all of it; best rationale anchor
+  dravidiancodemix: null # ~50k — all of it; primary Indic source
+  macd: null             # ~190k — all of it; binary only, important for coverage
+  ruhsold: null          # ~10k — all of it; Roman-Urdu severity anchor
+  implicithate: null     # ~6k  — all of it; most on-target implicit hate
+  toxigen: null          # ~9k  — all of it; balanced, targets head
+  sbic: 15000            # of ~31k — offensive-vs-hate axis
+  dynahate: 15000        # of ~41k — adversarial, largest source
+  hasoc: null            # TBD after download
+  dravidianlt: null      # TBD — fills ml/te gap
+  constraint2021: null   # TBD — native-script Hindi
+  ieee_razi: null        # TBD after download
+
+per_language_weights:
+  en: 1.0
+  hi: 1.5       # native-script Hindi thin until CONSTRAINT 2021 added
+  ur_roman: 1.0
+  ta: 1.0
+  te: 2.0       # Telugu is the thinnest Indic language right now
+  ml: 2.0       # Malayalam similarly thin
+  kn: 1.0       # Kannada (from MACD/DravidianCodeMix)
+
+test_only_sources:
+  - hatecheck
+  - multilingual_hatecheck
+
+# Minimum rows required per language before training is considered valid.
+# build_dataset.py will WARN (not fail) if any language falls below this.
+min_train_rows_per_language: 3000
+
+# Minimum rows required per TARGET_CLASS for the target head to be useful.
+# Reported in DATA_REPORT.md; does not block training.
+min_target_class_rows: 200
