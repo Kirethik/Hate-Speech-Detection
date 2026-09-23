@@ -32,3 +32,11 @@ DATA_CONFIG_PATH = os.getenv("DATA_CONFIG_PATH", "data")
 
 # Hardware/VRAM limits
 VRAM_HEADROOM_LIMIT_MB = int(os.getenv("VRAM_HEADROOM_LIMIT_MB", "1024"))
+
+import os
+MODEL_B_TEMPERATURE = float(os.getenv("MODEL_B_TEMPERATURE", "0.65"))
+MODEL_B_TOP_P = float(os.getenv("MODEL_B_TOP_P", "0.9"))
+MODEL_B_REPETITION_PENALTY = float(os.getenv("MODEL_B_REPETITION_PENALTY", "1.2"))
+MODEL_B_MAX_OUTPUT_LENGTH = int(os.getenv("MODEL_B_MAX_OUTPUT_LENGTH", "64"))
+MODEL_B_SAFETY_THRESHOLD = float(os.getenv("MODEL_B_SAFETY_THRESHOLD", "0.5"))
+MODEL_B_CANDIDATES = int(os.getenv("MODEL_B_CANDIDATES", "4"))
