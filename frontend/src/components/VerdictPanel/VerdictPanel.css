@@ -1,0 +1,108 @@
+.verdict-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.verdict-header {
+  padding: var(--space-6);
+  color: white;
+}
+
+.verdict-header.safe { background: var(--color-ok); }
+.verdict-header.offensive { background: var(--color-amber); color: var(--color-ink); }
+.verdict-header.hate { background: var(--color-brick); }
+
+.verdict-title {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  margin-bottom: var(--space-1);
+}
+
+.confidence {
+  font-size: var(--text-sm);
+  opacity: 0.9;
+}
+
+.verdict-body {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.info-block {
+  background: var(--color-surface);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.info-block h3 {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  color: var(--color-muted);
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-1);
+}
+
+.target-value {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-medium);
+  text-transform: capitalize;
+}
+
+.nli-block {
+  background: var(--color-accent-bg);
+  border-color: var(--color-accent);
+}
+
+.dehumanization-alert {
+  margin-top: var(--space-2);
+  color: var(--color-brick);
+  font-size: var(--text-sm);
+}
+
+.technical-details {
+  margin-top: auto;
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+}
+
+.technical-details summary {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.details-content {
+  margin-top: var(--space-3);
+  font-size: var(--text-xs);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+}
+
+.detail-table {
+  margin-top: var(--space-3);
+}
+
+.detail-table h4 {
+  color: var(--color-muted);
+  margin-bottom: var(--space-1);
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  border-bottom: 1px dashed var(--color-border);
+}
+
+.detail-row code {
+  font-family: monospace;
+  background: var(--color-border);
+  padding: 0 4px;
+  border-radius: 2px;
+}

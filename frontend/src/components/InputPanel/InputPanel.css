@@ -1,0 +1,107 @@
+.input-panel {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.mode-tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+
+.mode-tabs button {
+  flex: 1;
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  font-weight: var(--weight-medium);
+  color: var(--color-muted);
+}
+
+.mode-tabs button.active {
+  background: var(--color-ink);
+  color: var(--color-surface);
+  border-color: var(--color-ink);
+}
+
+.input-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: var(--space-4);
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.field-group.flex-fill {
+  flex: 1;
+}
+
+label {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-muted);
+}
+
+select, textarea, .file-label {
+  font-family: inherit;
+  font-size: var(--text-base);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-panel);
+  color: var(--color-ink);
+}
+
+.text-input {
+  flex: 1;
+  resize: none;
+  min-height: 200px;
+}
+
+.file-drop {
+  position: relative;
+}
+
+.file-drop input[type="file"] {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+}
+
+.file-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+  border-style: dashed;
+  cursor: pointer;
+  background: var(--color-surface);
+}
+
+.file-label:hover {
+  border-color: var(--color-focus);
+}
+
+.submit-btn {
+  background: var(--color-accent);
+  color: white;
+  border: none;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  font-weight: var(--weight-bold);
+  margin-top: auto;
+}
+
+.submit-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
