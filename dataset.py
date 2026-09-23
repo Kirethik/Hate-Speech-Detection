@@ -18,6 +18,7 @@ UNIFIED SCHEMA (one row per example):
                           if this example has no rationale annotation at all
                           (as opposed to an annotated-but-empty span list)
   source            str   dataset name, for per-source / per-language eval breakdowns
+  script            str   'native', 'latin', or 'mixed'
 
 Missing target/severity/rationale labels are handled by masking (see model.py),
 not by skipping the example — this is what lets weakly-labeled sources
@@ -30,20 +31,37 @@ import ast
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
+import unicodedata
+import re
 
-# NOTE: "political" is currently a DEAD CLASS — HateXplain is the only source
-# that populates target_label, and its TARGET_MAP never emits "political", so
-# the class has 0 examples in every split. It still costs a logit and, because
-# it scores a mechanical F1=0.000, it drags the reported target macro-F1 down
-# from 0.655 (over classes that have support) to 0.561. "disability" is nearly
-# as bad (~26 train / 4 test examples). Drop both from this list the next time
-# you retrain from scratch — changing it now would invalidate the existing
-# checkpoint's 8-way target head.
-TARGET_CLASSES = [
-    "none", "religion", "gender", "caste_ethnicity",
-    "disability", "political", "nationality_migrant", "other",
-]
-SEVERITY_CLASSES = ["normal", "offensive_profanity", "hate"]
+_DEVANAGARI = range(0x0900, 0x0980)
+_TAMIL = range(0x0B80, 0x0C00)
+_TELUGU = range(0x0C00, 0x0C80)
+_MALAYALAM = range(0x0D00, 0x0D80)
+_ARABIC_URDU = range(0x0600, 0x0700)
+
+_INDIC_RANGES = [_DEVANAGARI, _TAMIL, _TELUGU, _MALAYALAM, _ARABIC_URDU]
+
+
+def detect_script(text: str) -> str:
+    """
+    Returns 'native' if text is predominantly Indic/Arabic script,
+    'latin' if predominantly Latin, 'mixed' if both are significant.
+    """
+    native_count = sum(1 for c in text if any(ord(c) in r for r in _INDIC_RANGES))
+    latin_count = sum(1 for c in text if c.isalpha() and ord(c) < 0x0250)
+    total = native_count + latin_count
+    if total == 0:
+        return 'latin'
+    native_ratio = native_count / total
+    if native_ratio > 0.8:
+        return 'native'
+    elif native_ratio < 0.2:
+        return 'latin'
+    return 'mixed'
+
+# NOTE: "political" is no longer a dead class — it is resolved by implicit-hate data.
+from label_maps import TARGET_CLASSES, SEVERITY_CLASSES
 
 
 class CivitasDetectorDataset(Dataset):
@@ -89,10 +107,13 @@ class CivitasDetectorDataset(Dataset):
         # augmentation rather than lose their span supervision.
         if self.augmenter is not None and not has_rationale:
             raw_text, target_label = self.augmenter(raw_text, target_label)
-        text = normalize_code_mixed(raw_text)
+            
+        script = str(row.get("script", detect_script(raw_text))) if "script" in self.df.columns else detect_script(raw_text)
+
+        norm_text, offset_map = normalize_code_mixed(raw_text)
 
         encoding = self.tokenizer(
-            text,
+            norm_text,
             truncation=True,
             max_length=self.max_length,
             padding="max_length",
@@ -116,7 +137,11 @@ class CivitasDetectorDataset(Dataset):
                 for i, (start, end) in enumerate(offsets.tolist()):
                     if start == end:
                         continue
-                    if start < span_end and end > span_start:
+                    
+                    orig_start = offset_map[start] if start < len(offset_map) else len(raw_text)
+                    orig_end = offset_map[end - 1] + 1 if end > 0 and (end - 1) < len(offset_map) else len(raw_text)
+
+                    if orig_start < span_end and orig_end > span_start:
                         rationale_labels[i] = 1
 
         return {
@@ -131,6 +156,7 @@ class CivitasDetectorDataset(Dataset):
             "rationale_mask": torch.tensor(1 if has_rationale else 0, dtype=torch.long),
             "language": row["language"],
             "source": row.get("source", "unknown"),
+            "script": script,
         }
 
 
@@ -147,19 +173,78 @@ def _parse_spans(raw):
     return parsed if isinstance(parsed, list) else []
 
 
-def normalize_code_mixed(text: str) -> str:
+def normalize_code_mixed(text: str) -> tuple[str, list[int]]:
     """
-    Placeholder de-obfuscation / normalization step (your architecture slide's
-    "Normalize & De-obfuscate" box). Fill this in with:
-      - leetspeak reversal (h@te -> hate, h4te -> hate)
-      - spacing collapse for deliberately spaced evasion (h a t e -> hate)
-      - basic transliteration normalization for Roman-Urdu / Hinglish variants
-        (e.g. collapsing "u"/"oo", repeated-letter elongation "haaaate" -> "hate")
-    Kept minimal here (whitespace/case only) so it doesn't silently corrupt
-    training data before you've validated a real normalization ruleset —
-    swap in your own de-obfuscation module once you've built and tested it
-    separately (ideally evaluated against RQ1's perturbation stress test).
+    Normalizes text for hate speech detection.
+    Returns: (normalized_text, offset_map)
+    where offset_map[i] = position in original text corresponding to position i in normalized.
     """
-    text = text.strip()
-    text = " ".join(text.split())  # collapse repeated whitespace
-    return text
+    offset_map = list(range(len(text)))
+
+    # 1. Unicode NFKC normalization + strip zero-width chars
+    t1 = []
+    m1 = []
+    for i, c in enumerate(text):
+        if c in ('\u200b', '\u200c', '\u200d', '\ufeff'):
+            continue
+        norm_c = unicodedata.normalize('NFKC', c)
+        for nc in norm_c:
+            t1.append(nc)
+            m1.append(offset_map[i])
+
+    text1 = "".join(t1)
+
+    # 2. Unify quotes
+    quote_map = {'\u201c': '"', '\u201d': '"', '\u2018': "'", '\u2019': "'"}
+    t2 = [quote_map.get(c, c) for c in text1]
+    m2 = m1
+    text2 = "".join(t2)
+
+    def apply_regex(t, offsets, pattern, replacer):
+        new_t = []
+        new_m = []
+        last_end = 0
+        for match in re.finditer(pattern, t):
+            new_t.extend(t[last_end:match.start()])
+            new_m.extend(offsets[last_end:match.start()])
+            rs, ro = replacer(match, offsets)
+            new_t.extend(rs)
+            new_m.extend(ro)
+            last_end = match.end()
+        new_t.extend(t[last_end:])
+        new_m.extend(offsets[last_end:])
+        return "".join(new_t), new_m
+
+    # 3. Collapse deliberately spaced single chars
+    def unspace(match, offsets):
+        ms = match.group(0)
+        mo = offsets[match.start():match.end()]
+        rs, ro = [], []
+        for c, o in zip(ms, mo):
+            if c != ' ':
+                rs.append(c)
+                ro.append(o)
+        return rs, ro
+    text3, m3 = apply_regex(text2, m2, r'(?i)(?:[a-z]\s+){2,}[a-z]', unspace)
+
+    # 4. Collapse repeated chars >2 consecutive identical
+    def unrepeat(match, offsets):
+        ms = match.group(0)
+        mo = offsets[match.start():match.end()]
+        return ms[:2], mo[:2]
+    text4, m4 = apply_regex(text3, m3, r'(.)\1{2,}', unrepeat)
+
+    # 5. Leetspeak reversal ONLY inside alphabetic tokens (never in numbers/URLs)
+    leet_map = {'0':'o', '1':'i', '3':'e', '4':'a', '5':'s', '6':'g', '7':'t', '@':'a', '$':'s'}
+    def deleet(match, offsets):
+        ms = match.group(0)
+        mo = offsets[match.start():match.end()]
+        if not ms.startswith('http') and re.search(r'[a-zA-Z]', ms):
+            rs = [leet_map.get(c, c) for c in ms]
+        else:
+            rs = list(ms)
+        return rs, mo
+    text5, m5 = apply_regex(text4, m4, r'[a-zA-Z0-9@$]+', deleet)
+
+    # 6. Keep emojis (never strip them) - implicitly handled because we don't strip them
+    return text5, m5

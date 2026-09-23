@@ -22,7 +22,7 @@ that distinction at all.
 import pandas as pd
 from huggingface_hub import hf_hub_download
 
-from dataset import SEVERITY_CLASSES
+from label_maps import TARGET_CLASSES, SEVERITY_CLASSES
 
 from ._hf import cap, hash_split
 

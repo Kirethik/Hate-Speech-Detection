@@ -23,7 +23,7 @@ import pandas as pd
 LANGS = {
     "tamil": ("ta", "tamil_offensive_full"),
     "kannada": ("kn", "kannada_offensive"),
-    "malayalam": ("ml", "mal_full_offensive"),
+    "malayalam": ("ml", "mal_full_offensive"),  # Note: The raw data might lack Malayalam files; dravidianlt.py (Phase 2) will cover it if so.
 }
 
 OFFENSIVE_LABELS = {

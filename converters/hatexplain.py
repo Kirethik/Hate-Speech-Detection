@@ -27,35 +27,8 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from dataset import TARGET_CLASSES, SEVERITY_CLASSES  # noqa: E402
+from label_maps import TARGET_CLASSES, SEVERITY_CLASSES, HATEXPLAIN_TARGET_MAP  # noqa: E402
 
-TARGET_MAP = {
-    "None": "none",
-    "African": "caste_ethnicity",
-    "Caucasian": "caste_ethnicity",
-    "Asian": "caste_ethnicity",
-    "Hispanic": "caste_ethnicity",
-    "Arab": "caste_ethnicity",
-    "Indian": "caste_ethnicity",
-    "Indigenous": "caste_ethnicity",
-    "Minority": "caste_ethnicity",
-    "Islam": "religion",
-    "Jewish": "religion",
-    "Christian": "religion",
-    "Hindu": "religion",
-    "Buddhism": "religion",
-    "Nonreligious": "religion",
-    "Women": "gender",
-    "Men": "gender",
-    "Homosexual": "gender",
-    "Heterosexual": "gender",
-    "Bisexual": "gender",
-    "Asexual": "gender",
-    "Refugee": "nationality_migrant",
-    "Disability": "disability",
-    "Economic": "other",
-    "Other": "other",
-}
 
 LABEL_TO_SEVERITY = {"normal": "normal", "offensive": "offensive_profanity", "hatespeech": "hate"}
 LABEL_PRIORITY = ["hatespeech", "offensive", "normal"]  # more severe first, for tie-breaks
@@ -74,7 +47,7 @@ def _majority_target(target_lists):
     mapped = []
     for targets in target_lists:
         for t in targets:
-            mapped.append(TARGET_MAP.get(t, "other"))
+            mapped.append(HATEXPLAIN_TARGET_MAP.get(t, "other"))
     if not mapped:
         return "none"
     return _majority(mapped, ["none"] + [c for c in TARGET_CLASSES if c != "none"])

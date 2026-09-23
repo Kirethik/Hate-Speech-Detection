@@ -23,7 +23,7 @@ be stripped or every example trains on a spurious leading "b'".
 import pandas as pd
 from huggingface_hub import hf_hub_download
 
-from dataset import SEVERITY_CLASSES, TARGET_CLASSES
+from label_maps import TARGET_CLASSES, SEVERITY_CLASSES, TOXIGEN_TOXIGEN_TARGET_MAP, TARGET_CLASSES
 
 from ._hf import cap, hash_split, strip_byte_prefix
 
@@ -38,31 +38,13 @@ REPO = "toxigen/toxigen-data"
 FILENAME = "annotated_train.csv"
 
 # ToxiGen's 13 demographic groups -> this project's 8-class target scheme.
-TARGET_MAP = {
-    "jewish": "religion",
-    "muslim": "religion",
-    "women": "gender",
-    "trans": "gender",
-    "lgbtq": "gender",
-    "bisexual": "gender",
-    "black": "caste_ethnicity",
-    "asian": "caste_ethnicity",
-    "chinese": "caste_ethnicity",
-    "latino": "caste_ethnicity",
-    "mexican": "caste_ethnicity",
-    "native_american": "caste_ethnicity",
-    "middle_east": "caste_ethnicity",
-    "mental_disability": "disability",
-    "physical_disability": "disability",
-    "immigrant": "nationality_migrant",
-}
 
 
 def _target_index(raw) -> int:
     key = str(raw).strip().casefold().replace(" ", "_").replace("-", "_")
-    if key in TARGET_MAP:
-        return TARGET_CLASSES.index(TARGET_MAP[key])
-    for needle, mapped in TARGET_MAP.items():  # e.g. "black folks" -> black
+    if key in TOXIGEN_TARGET_MAP:
+        return TARGET_CLASSES.index(TOXIGEN_TARGET_MAP[key])
+    for needle, mapped in TOXIGEN_TARGET_MAP.items():  # e.g. "black folks" -> black
         if needle in key:
             return TARGET_CLASSES.index(mapped)
     return -1  # unknown group: mask rather than guess

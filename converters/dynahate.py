@@ -22,7 +22,7 @@ cast error), but the mirror ships the original CSV intact.
 import pandas as pd
 from huggingface_hub import hf_hub_download
 
-from dataset import SEVERITY_CLASSES
+from label_maps import TARGET_CLASSES, SEVERITY_CLASSES
 
 from ._hf import cap
 

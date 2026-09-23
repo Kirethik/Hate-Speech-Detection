@@ -26,15 +26,8 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from dataset import SEVERITY_CLASSES  # noqa: E402
+from label_maps import TARGET_CLASSES, SEVERITY_CLASSES, RUHSOLD_SEVERITY_MAP  # noqa: E402
 
-LABEL_TO_SEVERITY = {
-    "Normal": "normal",
-    "Profane/Untargeted": "offensive_profanity",
-    "Abusive/Offensive": "offensive_profanity",
-    "Religious Hate": "hate",
-    "Sexism": "hate",
-}
 
 
 def convert(raw_dir="raw_data"):
@@ -53,7 +46,7 @@ def convert(raw_dir="raw_data"):
     rows = []
     for split_name, split_df in [("train", train_df), ("val", val_df)]:
         for _, r in split_df.iterrows():
-            severity = LABEL_TO_SEVERITY[r["label_name"]]
+            severity = RUHSOLD_SEVERITY_MAP[r["label_name"]]
             rows.append(
                 {
                     "text": str(r["tweet"]).strip(),

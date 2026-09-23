@@ -26,21 +26,12 @@ are concatenated and re-split by hash.
 import pandas as pd
 from datasets import load_dataset
 
-from dataset import SEVERITY_CLASSES, TARGET_CLASSES
+from label_maps import TARGET_CLASSES, SEVERITY_CLASSES, SBIC_SBIC_TARGET_MAP
 
 from ._hf import cap, hash_split
 
 REPO = "Ayush-Singh/social-bias-frames-splits"
 
-TARGET_MAP = {
-    "race": "caste_ethnicity",
-    "gender": "gender",
-    "culture": "religion",       # SBIC's culture bucket is religion/culture
-    "disabled": "disability",
-    "social": "political",
-    "body": "other",
-    "victim": "other",
-}
 
 
 def _num(series: pd.Series) -> pd.Series:
@@ -81,8 +72,8 @@ def convert(raw_dir="raw_data", max_rows: int | None = None):
             severity = "offensive_profanity"
 
         cat = str(r["category"]).strip().casefold()
-        if offensive and group_targeted and cat in TARGET_MAP:
-            target = TARGET_CLASSES.index(TARGET_MAP[cat])
+        if offensive and group_targeted and cat in SBIC_TARGET_MAP:
+            target = TARGET_CLASSES.index(SBIC_TARGET_MAP[cat])
         elif not offensive:
             target = TARGET_CLASSES.index("none")
         else:
