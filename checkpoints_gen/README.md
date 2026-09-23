@@ -1,3 +1,11 @@
+---
+base_model: google/mt5-small
+library_name: peft
+tags:
+- base_model:adapter:google/mt5-small
+- lora
+- transformers
+---
 # Model B — Checkpoints (LoRA Adapters)
 
 This directory stores the QLoRA adapter weights for Model B (`google/mt5-small`
@@ -24,3 +32,7 @@ The base model (`google/mt5-small`) is downloaded from HuggingFace on first use
 and cached locally. Only the LoRA adapter weights are saved here — the full
 model is reconstructed at inference time by loading the adapter on top of the
 frozen base weights.
+### Framework versions
+
+- PEFT 0.19.1
+- PEFT 0.20.0

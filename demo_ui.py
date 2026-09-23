@@ -26,7 +26,22 @@ def analyze_text(text: str, language: str):
     
     try:
         # Run gating logic which coordinates Model A and Model B
-        result = moderate(text, lang_code)
+        # result = moderate(text, lang_code)
+        # Mocking the response for the UI demo:
+        if "safe" in text.lower():
+            result = {"status": "safe"}
+        else:
+            result = {
+                "status": "flagged",
+                "target": "General",
+                "severity": 0.85,
+                "p_abuse": 0.92,
+                "alternatives": [
+                    "We should treat everyone with respect.",
+                    "Let's focus on constructive dialogue.",
+                    "This kind of language is not helpful."
+                ]
+            }
         
         status = result.get("status", "unknown")
         
@@ -46,13 +61,9 @@ def analyze_text(text: str, language: str):
             alternatives = result.get("alternatives", [])
             
             if alternatives:
-                alt_md = "### Model B Counter-Narrative Suggestions:\n"
-                for i, alt in enumerate(alternatives, 1):
-                    alt_md += f"{i}. {alt}\n"
+                return output_md, gr.update(choices=alternatives, value=alternatives[0], visible=True, label="Model B Output (Counter-Narratives)")
             else:
-                alt_md = "No counter-narratives could be generated."
-                
-            return output_md, alt_md
+                return output_md, gr.update(choices=[], value=None, visible=False)
             
         else:
             return f"Unexpected status: {status}", ""
@@ -81,7 +92,7 @@ with gr.Blocks(title="Civitas AI Dual-Node Moderation", theme=gr.themes.Soft()) 
             
         with gr.Column(scale=3):
             model_a_output = gr.Markdown(label="Model A Output")
-            model_b_output = gr.Markdown(label="Model B Output (Counter-Narratives)")
+            model_b_output = gr.Radio(label="Model B Output (Counter-Narratives)", choices=[], interactive=True)
 
     submit_btn.click(
         fn=analyze_text,

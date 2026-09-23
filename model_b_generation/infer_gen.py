@@ -22,6 +22,9 @@ import logging
 import random
 import warnings
 
+# Silence HF symlink warnings on Windows
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
 import torch
 from pathlib import Path
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer

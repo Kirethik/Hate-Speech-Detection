@@ -7,6 +7,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
+  const [selectedAlternative, setSelectedAlternative] = useState(null)
 
   const handleAnalyze = async (e) => {
     e.preventDefault()
@@ -14,6 +15,7 @@ function App() {
 
     setLoading(true)
     setError(null)
+    setSelectedAlternative(null)
     
     try {
       const response = await fetch('/api/moderate', {
@@ -131,8 +133,20 @@ function App() {
                     {result.alternatives && result.alternatives.length > 0 ? (
                       <div className="alternatives-list">
                         {result.alternatives.map((alt, idx) => (
-                          <div key={idx} className="alternative-item">
-                            {alt}
+                          <div 
+                            key={idx} 
+                            className={`alternative-item ${selectedAlternative === idx ? 'selected' : ''}`}
+                            onClick={() => setSelectedAlternative(idx)}
+                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
+                          >
+                            <input
+                              type="radio"
+                              name="alternative"
+                              checked={selectedAlternative === idx}
+                              onChange={() => setSelectedAlternative(idx)}
+                              style={{ margin: 0, cursor: 'pointer' }}
+                            />
+                            <span>{alt}</span>
                           </div>
                         ))}
                       </div>

@@ -27,13 +27,13 @@ REQUIRED_COLUMNS = {"hate_text", "language", "style", "response_text", "source"}
 
 # ── Test TER Mini-Corpus (always available, no download needed) ────────────
 
+@pytest.fixture(scope="module")
+def ter_df():
+    from converters_gen.ter_mini import convert
+    return convert()
+
 class TestTerMiniConverter:
     """The TER Mini-Corpus is embedded in the code, so it always works."""
-
-    @pytest.fixture(scope="class")
-    def ter_df(self):
-        from converters_gen.ter_mini import convert
-        return convert()
 
     def test_returns_dataframe(self, ter_df):
         assert isinstance(ter_df, pd.DataFrame)

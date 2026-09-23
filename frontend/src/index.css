@@ -263,6 +263,16 @@ select {
   animation: slideIn 0.3s ease forwards;
   opacity: 0;
   transform: translateY(10px);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.alternative-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.alternative-item.selected {
+  background: rgba(59, 130, 246, 0.15);
+  border-left-color: var(--success-color);
 }
 
 .alternative-item:nth-child(1) { animation-delay: 0.1s; }

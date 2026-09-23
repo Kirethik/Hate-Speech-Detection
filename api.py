@@ -50,7 +50,22 @@ async def moderate_endpoint(req: ModerationRequest):
         raise HTTPException(status_code=400, detail=f"Unsupported language: {req.language}")
 
     try:
-        result = moderate(req.text, lang_code)
+        # result = moderate(req.text, lang_code)
+        # Mocking the response for the UI demo:
+        if "safe" in req.text.lower():
+            result = {"status": "safe"}
+        else:
+            result = {
+                "status": "flagged",
+                "target": "General",
+                "severity": 0.85,
+                "p_abuse": 0.92,
+                "alternatives": [
+                    "We should treat everyone with respect.",
+                    "Let's focus on constructive dialogue.",
+                    "This kind of language is not helpful."
+                ]
+            }
         return result
     except Exception as e:
         print(f"Error during moderation: {traceback.format_exc()}")
