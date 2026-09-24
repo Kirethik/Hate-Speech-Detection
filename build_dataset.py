@@ -80,6 +80,8 @@ def _converter_failed(name: str, err: Exception, skip: bool) -> None:
 
 
 def main():
+    # Windows consoles default to cp1252; never crash on an Indic/Urdu label in a summary
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser()
     parser.add_argument("--raw_dir", default="data/raw")
     parser.add_argument("--output_dir", default="data")
@@ -147,7 +149,7 @@ def main():
 
     if not frames:
         print("ERROR: No data was loaded. Check that data/raw/ is populated "
-              "(expected layout: data/SOURCES.md).", file=sys.stderr)
+              "(expected layout: docs/SOURCES.md).", file=sys.stderr)
         sys.exit(1)
 
     combined = pd.concat(frames, ignore_index=True)

@@ -1,4 +1,4 @@
-.PHONY: install dev-api dev-web test eval package-data
+.PHONY: install dev-api dev-web test eval package-data package-code
 
 API_HOST ?= 127.0.0.1
 API_PORT ?= 8000
@@ -21,3 +21,8 @@ eval:
 
 package-data:
 	python scripts/package_data.py
+
+# committed code only (no data, weights or node_modules), for Colab notebooks
+package-code:
+	mkdir -p artifacts
+	git archive --format=zip -o artifacts/civitas_code.zip HEAD

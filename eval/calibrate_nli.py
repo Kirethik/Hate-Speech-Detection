@@ -36,7 +36,7 @@ def main():
     ap.add_argument("--val_csv", default="data/val.csv")
     ap.add_argument("--n", type=int, default=400, help="rows per class")
     ap.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
-    ap.add_argument("--out", default="checkpoints/model_a/nli_calibration.json")
+    ap.add_argument("--out", default="artifacts/model_a/nli_calibration.json")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 

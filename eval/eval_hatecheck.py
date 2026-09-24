@@ -20,8 +20,8 @@ Read the per-functionality table, not the headline. That table is the artefact
 worth putting in the report.
 
 Usage:
-    python -m eval.eval_hatecheck --checkpoint checkpoints/model_a/best_model.pt
-    python -m eval.eval_hatecheck --compare checkpoints/model_a/best_model_baseline.pt
+    python -m eval.eval_hatecheck --checkpoint artifacts/model_a/best_model.pt
+    python -m eval.eval_hatecheck --compare artifacts/model_a/best_model_baseline.pt
 """
 
 import argparse
@@ -34,41 +34,15 @@ import torch
 from huggingface_hub import hf_hub_download
 from transformers import XLMRobertaTokenizerFast
 
-from dataset import SEVERITY_CLASSES, TARGET_CLASSES, normalize_code_mixed
-from model import CivitasDetector
+from infer import load_model, score_batch
 
 REPO, FILENAME = "Paul/hatecheck", "test.csv"
 
 
-def load_checkpoint(path, device):
-    ckpt = torch.load(path, map_location=device, weights_only=False)
-    tok = XLMRobertaTokenizerFast.from_pretrained(ckpt["args"]["encoder_name"])
-    model = CivitasDetector(
-        encoder_name=ckpt["args"]["encoder_name"],
-        num_target_classes=len(TARGET_CLASSES),
-        num_severity_classes=len(SEVERITY_CLASSES),
-    ).to(device)
-    model.load_state_dict(ckpt["model_state_dict"])
-    model.eval()
-    return model, tok, ckpt["threshold"]
-
-
-@torch.no_grad()
-def score(model, tok, texts, device, batch_size=64):
-    out = []
-    for i in range(0, len(texts), batch_size):
-        chunk = [normalize_code_mixed(str(t)) for t in texts[i:i + batch_size]]
-        enc = tok(chunk, truncation=True, max_length=128, padding=True,
-                  return_tensors="pt").to(device)
-        with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device.type == "cuda"):
-            o = model(input_ids=enc["input_ids"], attention_mask=enc["attention_mask"])
-        out.append(torch.softmax(o["hate_logits"].float(), -1)[:, 1].cpu().numpy())
-    return np.concatenate(out)
-
-
 def evaluate(path, df, device):
-    model, tok, threshold = load_checkpoint(path, device)
-    probs = score(model, tok, df["test_case"].tolist(), device)
+    m = load_model(path, device)
+    threshold = m.threshold
+    probs = np.array([r["hate_prob"] for r in score_batch(m, df["test_case"].tolist(), 64)])
     pred = probs >= threshold
     gold = (df["label_gold"].astype(str).str.strip().str.casefold() == "hateful").to_numpy()
     return pred, gold, threshold, probs
@@ -76,12 +50,12 @@ def evaluate(path, df, device):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--checkpoint", default="checkpoints/model_a/best_model.pt")
+    ap.add_argument("--checkpoint", default="artifacts/model_a/best_model.pt")
     ap.add_argument("--compare", default=None,
                     help="second checkpoint to diff against (e.g. the baseline)")
     ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"],
                     help="use cpu when a training run owns the GPU")
-    ap.add_argument("--out", default="checkpoints/model_a/hatecheck.json")
+    ap.add_argument("--out", default="artifacts/model_a/hatecheck.json")
     args = ap.parse_args()
 
     device = torch.device(

@@ -76,6 +76,8 @@ def dedup(df: pd.DataFrame, label: str) -> pd.DataFrame:
 
 
 def main():
+    # Windows consoles default to cp1252; never crash on an Indic/Urdu label in a summary
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", default="data")
     parser.add_argument("--test_size", type=float, default=0.5,
