@@ -34,7 +34,7 @@ FILENAME = "2020-12-31-DynamicallyGeneratedHateDataset-entries-v0.1.csv"
 SPLIT_MAP = {"train": "train", "dev": "val", "test": "val"}
 
 
-def convert(raw_dir="raw_data", max_rows: int | None = None):
+def convert(raw_dir="data/raw", max_rows: int | None = None):
     path = hf_hub_download(REPO, FILENAME, repo_type="dataset")
     df = pd.read_csv(path).dropna(subset=["text", "label"])
 

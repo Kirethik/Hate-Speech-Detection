@@ -42,7 +42,7 @@ def _load_file(path):
     return df[["text", "label"]]
 
 
-def convert(raw_dir="raw_data"):
+def convert(raw_dir="data/raw"):
     root = Path(raw_dir) / "DravidianCodeMix-Dataset" / "DravidianCodeMix"
     rows = []
     for lang_name, (code, prefix) in LANGS.items():

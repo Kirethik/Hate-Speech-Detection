@@ -1,5 +1,5 @@
 """
-Converts hate-alert/HateXplain (raw_data/HateXplain/Data/dataset.json) to the
+Converts hate-alert/HateXplain (data/raw/HateXplain/Data/dataset.json) to the
 unified schema. This is the only source with all four label types (hate,
 target, severity, rationale), so it doubles as the "rationale anchor" the
 README calls out.
@@ -53,10 +53,10 @@ def _majority_target(target_lists):
     return _majority(mapped, ["none"] + [c for c in TARGET_CLASSES if c != "none"])
 
 
-def convert(raw_dir="raw_data"):
+def convert(raw_dir="data/raw"):
     root = Path(raw_dir) / "HateXplain" / "Data"
-    data = json.load(open(root / "dataset.json"))
-    splits = json.load(open(root / "post_id_divisions.json"))
+    data = json.load(open(root / "dataset.json", encoding="utf-8"))
+    splits = json.load(open(root / "post_id_divisions.json", encoding="utf-8"))
     split_of = {}
     for post_id in splits["train"]:
         split_of[post_id] = "train"

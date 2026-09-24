@@ -1,6 +1,6 @@
 """
 Converts community-datasets/roman_urdu_hate_speech (Fine_Grained config,
-raw_data/RUHSOLD/train.csv) to the unified schema.
+data/raw/RUHSOLD/train.csv) to the unified schema.
 
 Only the "train" split has labels — the HF dataset's "test" split is
 unlabeled (withheld, shared-task style) and its "validation" split is a
@@ -26,11 +26,10 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from label_maps import TARGET_CLASSES, SEVERITY_CLASSES, RUHSOLD_SEVERITY_MAP  # noqa: E402
+from label_maps import SEVERITY_CLASSES, RUHSOLD_SEVERITY_MAP  # noqa: E402
 
 
-
-def convert(raw_dir="raw_data"):
+def convert(raw_dir="data/raw"):
     path = Path(raw_dir) / "RUHSOLD" / "train.csv"
     df = pd.read_csv(path).dropna(subset=["tweet", "label"])
 

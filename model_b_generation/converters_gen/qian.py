@@ -62,7 +62,7 @@ def _load_qian_file(path: Path, source_name: str) -> list[dict]:
     return rows
 
 
-def convert(raw_dir: str = "raw_data") -> pd.DataFrame:
+def convert(raw_dir: str = "data/raw") -> pd.DataFrame:
     root = Path(raw_dir) / "qian_counter"
     all_rows = []
 

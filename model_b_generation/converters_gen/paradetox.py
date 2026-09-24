@@ -63,7 +63,7 @@ def _rows_from_hf(ds, task: str, language: str, source: str) -> list[dict]:
     return rows
 
 
-def convert(raw_dir: str = "raw_data") -> pd.DataFrame:
+def convert(raw_dir: str = "data/raw") -> pd.DataFrame:
     all_rows: list[dict] = []
 
     if not _HF_AVAILABLE:

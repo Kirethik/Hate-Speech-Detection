@@ -2,11 +2,13 @@
 Runs every converters/<source>.py and concatenates their output into
 data/train.csv / data/val.csv (the files train.py expects).
 
-Configuration is loaded from data_config.yaml (per-source caps,
-per-language upsampling weights, test-only source list).
+Configuration is loaded from data_config.yaml (per-source caps and the
+test-only source list). Per-language weights in the same file are NOT applied
+here: prepare_splits.py dedups train, which would delete repeated rows again.
+train.py applies them as sampling weights instead (--lang_weights).
 
 Usage:
-    python build_dataset.py [--raw_dir raw_data] [--output_dir data] [--config data_config.yaml]
+    python build_dataset.py [--raw_dir data/raw] [--output_dir data] [--config data_config.yaml]
     python build_dataset.py --no_implicit   # skip English implicit-hate sources
 """
 
@@ -17,6 +19,8 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
+
+from text_norm import detect_script
 
 from converters import (
     constraint2021,
@@ -41,6 +45,7 @@ SCHEMA_COLUMNS = [
     "severity_label",
     "rationale_spans",
     "source",
+    "script",
 ]
 
 # Sources that must NEVER enter the training pool — hard-coded as a safety net
@@ -66,40 +71,28 @@ def _assert_no_test_only_in_pool(df: pd.DataFrame, test_only: set) -> None:
         sys.exit(1)
 
 
-def _upsample(df: pd.DataFrame, weights: dict) -> pd.DataFrame:
-    """
-    Repeat rows for under-represented languages according to per_language_weights.
-    Upsampling is applied ONLY to the train split — val/test stay untouched.
-    """
-    train = df[df["split"] == "train"]
-    val = df[df["split"] != "train"]
-
-    parts = []
-    for lang, group in train.groupby("language", sort=False):
-        w = weights.get(lang, 1.0)
-        if w <= 1.0:
-            parts.append(group)
-        else:
-            # Integer repetitions + fractional sample
-            n_extra = int((w - 1.0) * len(group))
-            extra = group.sample(n=n_extra, replace=True, random_state=42)
-            parts.append(pd.concat([group, extra], ignore_index=True))
-
-    return pd.concat(parts + [val], ignore_index=True)
+def _converter_failed(name: str, err: Exception, skip: bool) -> None:
+    """A converter exception is a bug (missing data returns 0 rows), so stop by default."""
+    msg = f"{name} converter raised {type(err).__name__}: {err}"
+    if not skip:
+        raise SystemExit(f"ERROR: {msg}\n(re-run with --skip_failed to build without it)")
+    print(f"WARNING: {msg} -- skipping (--skip_failed)")
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--raw_dir", default="raw_data")
+    parser.add_argument("--raw_dir", default="data/raw")
     parser.add_argument("--output_dir", default="data")
     parser.add_argument("--config", default="data_config.yaml")
     parser.add_argument("--no_implicit", action="store_true",
                         help="skip the four English implicit-hate sources")
+    parser.add_argument("--skip_failed", action="store_true",
+                        help="continue when a converter raises (default: stop). Missing "
+                             "data is not a failure; converters return 0 rows for that.")
     args = parser.parse_args()
 
     cfg = _load_config(args.config)
     caps: dict = cfg.get("per_source_caps", {})
-    lang_weights: dict = cfg.get("per_language_weights", {})
     test_only_cfg: list = cfg.get("test_only_sources", [])
     test_only: set = _ALWAYS_TEST_ONLY | set(test_only_cfg)
     min_rows: int = cfg.get("min_train_rows_per_language", 3000)
@@ -136,7 +129,7 @@ def main():
                   f"  langs={df['language'].value_counts().to_dict()}")
             frames.append(df)
         except Exception as e:
-            print(f"WARNING: {name} converter raised {type(e).__name__}: {e} — skipping")
+            _converter_failed(name, e, args.skip_failed)
 
     if not args.no_implicit:
         for name, module, loader in implicit_sources:
@@ -150,10 +143,11 @@ def main():
                 print(f"{name}: {len(df)} rows{note}")
                 frames.append(df)
             except Exception as e:
-                print(f"WARNING: {name} converter raised {type(e).__name__}: {e} — skipping")
+                _converter_failed(name, e, args.skip_failed)
 
     if not frames:
-        print("ERROR: No data was loaded. Check that raw_data/ is populated.", file=sys.stderr)
+        print("ERROR: No data was loaded. Check that data/raw/ is populated "
+              "(expected layout: data/SOURCES.md).", file=sys.stderr)
         sys.exit(1)
 
     combined = pd.concat(frames, ignore_index=True)
@@ -162,9 +156,8 @@ def main():
     # Safety assertion — must run before anything is written
     _assert_no_test_only_in_pool(combined, test_only)
 
-    # Apply per-language upsampling (train split only)
-    if lang_weights:
-        combined = _upsample(combined, lang_weights)
+    # Script is derived from the text, so every source gets it the same way
+    combined["script"] = combined["text"].astype(str).map(detect_script)
 
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -173,25 +166,24 @@ def main():
         split_df = combined[combined["split"] == split_name][SCHEMA_COLUMNS].copy()
         out_path = out_dir / f"{split_name}.csv"
         split_df.to_csv(out_path, index=False)
-        print(f"\nwrote {len(split_df):>7} rows → {out_path}")
+        print(f"\nwrote {len(split_df):>7} rows -> {out_path}")
         print("  per-language:", split_df["language"].value_counts().to_dict())
         print("  per-source:  ", split_df["source"].value_counts().to_dict())
         print("  hate_label:  ", split_df["hate_label"].value_counts().to_dict())
+        print("  script:      ", split_df["script"].value_counts().to_dict())
 
-        # Warn on thin languages
-        lang_counts = split_df[split_df["split"] == "train"]["language"].value_counts() \
-            if split_name == "train" else split_df["language"].value_counts()
-        for lang, count in lang_counts.items():
-            if count < min_rows:
-                print(f"  ⚠ WARNING: {lang} has only {count} {split_name} rows "
-                      f"(min_train_rows_per_language={min_rows})")
+        if split_name == "train":
+            for lang, count in split_df["language"].value_counts().items():
+                if count < min_rows:
+                    print(f"  WARNING: {lang} has only {count} train rows "
+                          f"(min_train_rows_per_language={min_rows})")
 
     # Refresh backup so prepare_splits.py sees the latest build
     backup = out_dir / "_original"
     backup.mkdir(parents=True, exist_ok=True)
     for split_name in ["train", "val"]:
         shutil.copy2(out_dir / f"{split_name}.csv", backup / f"{split_name}.csv")
-    print(f"\nrefreshed {backup} — prepare_splits.py will see this build")
+    print(f"\nrefreshed {backup}: prepare_splits.py will see this build")
 
 
 if __name__ == "__main__":

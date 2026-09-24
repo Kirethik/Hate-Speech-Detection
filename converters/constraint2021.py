@@ -1,78 +1,104 @@
 """
 CONSTRAINT 2021 Hindi Hostility Detection converter.
 
-Expected directory layout:
+Expected directory layout (VERIFY against your download):
     data/raw/constraint2021/
-        train.csv    (columns: post_id, text, label)
-        val.csv
-        test.csv     (may not have labels)
+        train.csv     text column: "Post" or "text"
+        val.csv       label column: "Labels Set" or "label"
+        (test file, if present, is ignored: shared-task test labels were withheld)
 
-Labels (6 classes from the shared task):
-    Defamation       → hate_label=1, severity=hate
-    Fake News        → hate_label=1, severity=offensive_profanity
-    Hate Speech      → hate_label=1, severity=hate
-    Offensive        → hate_label=1, severity=offensive_profanity
-    Non-hostile      → hate_label=0, severity=normal
-    Hostile          → hate_label=1, severity=offensive_profanity (fallback, ambiguous)
+Each post carries a comma-separated label SET drawn from:
+    non-hostile | fake | hate | offensive | defamation
+e.g. "hate,offensive" or "fake,defamation". Matching is case-insensitive.
 
-Text is native Devanagari Hindi — critically, this matches ASR output and
-fills the native-script Hindi gap in the training data.
+Resolution (see label_maps.CONSTRAINT_SEVERITY_MAP), most severe wins:
+    contains hate                   -> hate_label=1, severity=hate
+    contains offensive/defamation   -> hate_label=1, severity=offensive_profanity
+    exactly non-hostile             -> hate_label=0, severity=normal
+    only fake                       -> DROPPED (misinformation, not abuse)
+    any unrecognised label          -> DROPPED and counted (never guessed)
+
+Text is native Devanagari Hindi, which matches ASR output and fills the
+native-script Hindi gap in the training data.
 """
 
+import sys
+from collections import Counter
 from pathlib import Path
 
 import pandas as pd
 
-import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from label_maps import SEVERITY_CLASSES  # noqa: E402
-from dataset import detect_script  # noqa: E402
+from label_maps import CONSTRAINT_SEVERITY_MAP, SEVERITY_CLASSES  # noqa: E402
+
+_TEXT_COLS = ("post", "text")
+_LABEL_COLS = ("labels set", "label", "labels")
+_COLUMNS = ["text", "language", "hate_label", "target_label",
+            "severity_label", "rationale_spans", "source", "split"]
 
 
-_LABEL_MAP = {
-    "Defamation":   ("hate",                 1),
-    "Fake News":    ("offensive_profanity",   1),
-    "Hate Speech":  ("hate",                 1),
-    "Offensive":    ("offensive_profanity",   1),
-    "Hostile":      ("offensive_profanity",   1),   # fallback — user confirmed
-    "Non-hostile":  ("normal",               0),
-}
+def _find_col(df: pd.DataFrame, candidates) -> str | None:
+    lower = {c.lower().strip(): c for c in df.columns}
+    return next((lower[c] for c in candidates if c in lower), None)
 
 
-def convert(raw_dir: str = "raw_data") -> pd.DataFrame:
+def resolve_labels(raw: str) -> tuple[int, str] | None:
+    """
+    Map one post's label set to (hate_label, severity) or None to drop it.
+    Unknown labels drop the row rather than defaulting to hateful.
+    """
+    labels = {t.strip().casefold() for t in str(raw).split(",") if t.strip()}
+    if not labels or labels - set(CONSTRAINT_SEVERITY_MAP):
+        return None
+    if "hate" in labels:
+        return 1, "hate"
+    if labels & {"offensive", "defamation"}:
+        return 1, "offensive_profanity"
+    if labels == {"non-hostile"}:
+        return 0, "normal"
+    return None  # fake-only, or non-hostile mixed with fake (contradictory)
+
+
+def convert(raw_dir: str = "data/raw") -> pd.DataFrame:
     root = Path(raw_dir) / "constraint2021"
     rows = []
+    dropped = Counter()
 
     for filename, our_split in [("train.csv", "train"), ("val.csv", "val")]:
         path = root / filename
         if not path.exists():
             continue
-        df = pd.read_csv(path, on_bad_lines="skip").dropna(subset=["text", "label"])
+        df = pd.read_csv(path, on_bad_lines="skip")
+        text_col, label_col = _find_col(df, _TEXT_COLS), _find_col(df, _LABEL_COLS)
+        if text_col is None or label_col is None:
+            print(f"  [constraint2021] WARNING: {filename} columns {list(df.columns)} — "
+                  f"expected one of {_TEXT_COLS} and one of {_LABEL_COLS}; skipping")
+            continue
 
-        for _, r in df.iterrows():
-            text = str(r["text"]).strip()
-            label = str(r["label"]).strip()
+        for _, r in df.dropna(subset=[text_col, label_col]).iterrows():
+            text = str(r[text_col]).strip()
             if not text:
                 continue
-            severity_str, hate_label = _LABEL_MAP.get(label, ("offensive_profanity", 1))
+            resolved = resolve_labels(r[label_col])
+            if resolved is None:
+                dropped[str(r[label_col]).strip().casefold()] += 1
+                continue
+            hate_label, severity = resolved
             rows.append({
                 "text": text,
                 "language": "hi",
-                "script": detect_script(text),
                 "hate_label": hate_label,
                 "target_label": -1,
-                "severity_label": SEVERITY_CLASSES.index(severity_str),
+                "severity_label": SEVERITY_CLASSES.index(severity),
                 "rationale_spans": "[]",
                 "source": "constraint2021",
                 "split": our_split,
             })
 
-    if not rows:
-        return pd.DataFrame(columns=[
-            "text", "language", "script", "hate_label", "target_label",
-            "severity_label", "rationale_spans", "source", "split",
-        ])
-    return pd.DataFrame(rows)
+    if dropped:
+        print(f"  [constraint2021] dropped {sum(dropped.values())} rows "
+              f"(fake-only / unknown labels): {dict(dropped.most_common(8))}")
+    return pd.DataFrame(rows, columns=_COLUMNS)
 
 
 if __name__ == "__main__":
@@ -81,4 +107,3 @@ if __name__ == "__main__":
     if not df.empty:
         print(df["hate_label"].value_counts())
         print(df["severity_label"].value_counts())
-        print(df["script"].value_counts())

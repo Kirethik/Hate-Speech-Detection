@@ -1,15 +1,15 @@
 # Civitas AI — Data Configuration
-# Loaded by build_dataset.py. Override any value via the corresponding
-# environment variable (e.g. CIVITAS_SBIC_CAP=20000).
+# Loaded by build_dataset.py (caps, test-only list) and train.py (language weights).
 #
 # per_source_caps:
 #   Max rows to sample from each source. null = use all rows.
 #   English implicit-hate sources are capped so they don't swamp the Indic corpus.
 #
 # per_language_weights:
-#   After capping, rows for thin languages are upsampled by this factor
-#   (implemented as repetition in the training split, NOT in val/test).
-#   1.0 = no upsampling. Increase for languages with < 3,000 training rows.
+#   Sampling weights used by train.py (--lang_weights), NOT row duplication:
+#   build-time duplication was undone by prepare_splits.py dedup. A weight of 2.0
+#   makes each row of that language twice as likely to be drawn per epoch.
+#   Val/test are never reweighted. 1.0 = natural frequency.
 #
 # test_only_sources:
 #   Sources that must NEVER enter the training pool.
@@ -37,6 +37,7 @@ per_language_weights:
   te: 2.0       # Telugu is the thinnest Indic language right now
   ml: 2.0       # Malayalam similarly thin
   kn: 1.0       # Kannada (from MACD/DravidianCodeMix)
+  ur: 2.0       # Urdu in Arabic script (IEEE Razi only; matches ASR output)
 
 test_only_sources:
   - hatecheck

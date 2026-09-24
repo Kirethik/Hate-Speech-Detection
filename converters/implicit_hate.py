@@ -30,7 +30,7 @@ REPO = "SALT-NLP/ImplicitHate"
 FILENAME = "implicit_hate.csv"
 
 
-def convert(raw_dir="raw_data", max_rows: int | None = None):
+def convert(raw_dir="data/raw", max_rows: int | None = None):
     path = hf_hub_download(REPO, FILENAME, repo_type="dataset")
     df = pd.read_csv(path).dropna(subset=["post"])
 

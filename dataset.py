@@ -10,7 +10,7 @@ identical regardless of which dataset a row came from.
 
 UNIFIED SCHEMA (one row per example):
   text              str   raw text, original script/Romanization preserved
-  language          str   one of: en, hi, ur_roman, ta, te (ISO-ish codes you chose)
+  language          str   one of config.SUPPORTED_LANGUAGES (en, hi, ur, ur_roman, ta, te, ml, kn)
   hate_label        int   0 = not hate, 1 = hate            (ALWAYS required)
   target_label      int   class index into TARGET_CLASSES, or -1 if unknown
   severity_label    int   class index into SEVERITY_CLASSES, or -1 if unknown
@@ -31,36 +31,10 @@ import ast
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-import unicodedata
-import re
 
-_DEVANAGARI = range(0x0900, 0x0980)
-_TAMIL = range(0x0B80, 0x0C00)
-_TELUGU = range(0x0C00, 0x0C80)
-_MALAYALAM = range(0x0D00, 0x0D80)
-_ARABIC_URDU = range(0x0600, 0x0700)
+from text_norm import detect_script, normalize_code_mixed, to_original_span  # noqa: F401  (re-exported)
 
-_INDIC_RANGES = [_DEVANAGARI, _TAMIL, _TELUGU, _MALAYALAM, _ARABIC_URDU]
-
-
-def detect_script(text: str) -> str:
-    """
-    Returns 'native' if text is predominantly Indic/Arabic script,
-    'latin' if predominantly Latin, 'mixed' if both are significant.
-    """
-    native_count = sum(1 for c in text if any(ord(c) in r for r in _INDIC_RANGES))
-    latin_count = sum(1 for c in text if c.isalpha() and ord(c) < 0x0250)
-    total = native_count + latin_count
-    if total == 0:
-        return 'latin'
-    native_ratio = native_count / total
-    if native_ratio > 0.8:
-        return 'native'
-    elif native_ratio < 0.2:
-        return 'latin'
-    return 'mixed'
-
-# NOTE: "political" is no longer a dead class — it is resolved by implicit-hate data.
+# "political" targets come from SBIC's "social" targetCategory (see label_maps.py).
 from label_maps import TARGET_CLASSES, SEVERITY_CLASSES
 
 
@@ -138,8 +112,7 @@ class CivitasDetectorDataset(Dataset):
                     if start == end:
                         continue
                     
-                    orig_start = offset_map[start] if start < len(offset_map) else len(raw_text)
-                    orig_end = offset_map[end - 1] + 1 if end > 0 and (end - 1) < len(offset_map) else len(raw_text)
+                    orig_start, orig_end = to_original_span(start, end, offset_map, raw_text)
 
                     if orig_start < span_end and orig_end > span_start:
                         rationale_labels[i] = 1
@@ -171,80 +144,3 @@ def _parse_spans(raw):
         except (ValueError, SyntaxError):
             return []
     return parsed if isinstance(parsed, list) else []
-
-
-def normalize_code_mixed(text: str) -> tuple[str, list[int]]:
-    """
-    Normalizes text for hate speech detection.
-    Returns: (normalized_text, offset_map)
-    where offset_map[i] = position in original text corresponding to position i in normalized.
-    """
-    offset_map = list(range(len(text)))
-
-    # 1. Unicode NFKC normalization + strip zero-width chars
-    t1 = []
-    m1 = []
-    for i, c in enumerate(text):
-        if c in ('\u200b', '\u200c', '\u200d', '\ufeff'):
-            continue
-        norm_c = unicodedata.normalize('NFKC', c)
-        for nc in norm_c:
-            t1.append(nc)
-            m1.append(offset_map[i])
-
-    text1 = "".join(t1)
-
-    # 2. Unify quotes
-    quote_map = {'\u201c': '"', '\u201d': '"', '\u2018': "'", '\u2019': "'"}
-    t2 = [quote_map.get(c, c) for c in text1]
-    m2 = m1
-    text2 = "".join(t2)
-
-    def apply_regex(t, offsets, pattern, replacer):
-        new_t = []
-        new_m = []
-        last_end = 0
-        for match in re.finditer(pattern, t):
-            new_t.extend(t[last_end:match.start()])
-            new_m.extend(offsets[last_end:match.start()])
-            rs, ro = replacer(match, offsets)
-            new_t.extend(rs)
-            new_m.extend(ro)
-            last_end = match.end()
-        new_t.extend(t[last_end:])
-        new_m.extend(offsets[last_end:])
-        return "".join(new_t), new_m
-
-    # 3. Collapse deliberately spaced single chars
-    def unspace(match, offsets):
-        ms = match.group(0)
-        mo = offsets[match.start():match.end()]
-        rs, ro = [], []
-        for c, o in zip(ms, mo):
-            if c != ' ':
-                rs.append(c)
-                ro.append(o)
-        return rs, ro
-    text3, m3 = apply_regex(text2, m2, r'(?i)(?:[a-z]\s+){2,}[a-z]', unspace)
-
-    # 4. Collapse repeated chars >2 consecutive identical
-    def unrepeat(match, offsets):
-        ms = match.group(0)
-        mo = offsets[match.start():match.end()]
-        return ms[:2], mo[:2]
-    text4, m4 = apply_regex(text3, m3, r'(.)\1{2,}', unrepeat)
-
-    # 5. Leetspeak reversal ONLY inside alphabetic tokens (never in numbers/URLs)
-    leet_map = {'0':'o', '1':'i', '3':'e', '4':'a', '5':'s', '6':'g', '7':'t', '@':'a', '$':'s'}
-    def deleet(match, offsets):
-        ms = match.group(0)
-        mo = offsets[match.start():match.end()]
-        if not ms.startswith('http') and re.search(r'[a-zA-Z]', ms):
-            rs = [leet_map.get(c, c) for c in ms]
-        else:
-            rs = list(ms)
-        return rs, mo
-    text5, m5 = apply_regex(text4, m4, r'[a-zA-Z0-9@$]+', deleet)
-
-    # 6. Keep emojis (never strip them) - implicitly handled because we don't strip them
-    return text5, m5

@@ -26,7 +26,7 @@ are concatenated and re-split by hash.
 import pandas as pd
 from datasets import load_dataset
 
-from label_maps import TARGET_CLASSES, SEVERITY_CLASSES, SBIC_SBIC_TARGET_MAP
+from label_maps import TARGET_CLASSES, SEVERITY_CLASSES, SBIC_TARGET_MAP
 
 from ._hf import cap, hash_split
 
@@ -38,7 +38,7 @@ def _num(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series.replace("", None), errors="coerce")
 
 
-def convert(raw_dir="raw_data", max_rows: int | None = None):
+def convert(raw_dir="data/raw", max_rows: int | None = None):
     ds = load_dataset(REPO)
     df = pd.concat([ds[k].to_pandas() for k in ds.keys()], ignore_index=True)
     df = df.dropna(subset=["post"])

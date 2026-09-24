@@ -36,9 +36,12 @@ from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
+from label_maps import SEVERITY_CLASSES, TARGET_CLASSES
+from text_norm import detect_script
+
 SCHEMA_COLUMNS = [
     "text", "language", "hate_label", "target_label",
-    "severity_label", "rationale_spans", "source",
+    "severity_label", "rationale_spans", "source", "script",
 ]
 
 # Rows carrying target/severity/rationale annotation are worth more than rows
@@ -100,6 +103,8 @@ def main():
     for df in (train, pool):
         df["text"] = df["text"].astype(str)
         df["_key"] = dedup_key(df["text"])
+        if "script" not in df.columns:  # builds from before the script column existed
+            df["script"] = df["text"].map(detect_script)
 
     # --- 1. drop empty / degenerate text -------------------------------------
     for name, df in (("train", train), ("pool", pool)):
@@ -141,6 +146,13 @@ def main():
         print("  note: some source|language|label cells are singletons, "
               "stratifying on source|label instead")
         strata = pool["source"] + "|" + pool["hate_label"].astype(str)
+    # A tiny source can still leave a one-row stratum, which train_test_split
+    # rejects. Pool those rows into one shared bucket instead of crashing.
+    counts = strata.map(strata.value_counts())
+    if (counts < 2).any():
+        strata = strata.where(counts >= 2, "__rare__")
+        if (strata == "__rare__").sum() == 1:
+            strata = strata.replace("__rare__", strata.value_counts().index[0])
     val, test = train_test_split(
         pool, test_size=args.test_size, random_state=args.seed, stratify=strata
     )
@@ -152,8 +164,10 @@ def main():
     assert not (val_keys & test_keys), "leakage val<->test survived"
     print("  verified: zero key overlap between train / val / test")
 
+    outputs = {}
     for name, df in [("train", train), ("val", val), ("test", test)]:
         out = df[SCHEMA_COLUMNS]
+        outputs[name] = out
         out.to_csv(data_dir / f"{name}.csv", index=False)
         print(f"\nwrote {len(out):>6} rows -> {data_dir / (name + '.csv')}")
         print("  hate_label:", out["hate_label"].value_counts().to_dict())
@@ -164,7 +178,66 @@ def main():
               int((out['severity_label'] >= 0).sum()),
               int((out['rationale_spans'].astype(str).str.len() > 2).sum()))
 
+    report = data_dir / "DATA_REPORT.md"
+    report.write_text(build_report(outputs), encoding="utf-8")
+    print(f"\nwrote {report} (paste this back when reporting results)")
     return 0
+
+
+def _table(df: pd.DataFrame) -> str:
+    """Tiny markdown table writer (avoids a tabulate dependency)."""
+    cols = [str(c) for c in df.columns]
+    lines = ["| " + " | ".join([df.index.name or ""] + cols) + " |",
+             "|" + "---|" * (len(cols) + 1)]
+    for idx, row in df.iterrows():
+        lines.append("| " + " | ".join([str(idx)] + [str(v) for v in row.tolist()]) + " |")
+    return "\n".join(lines)
+
+
+def build_report(splits: dict, min_rows: int = 3000, min_target: int = 200) -> str:
+    """Row counts by language / source / label, plus the thin-data warnings."""
+    train = splits["train"]
+    parts = ["# Data report", ""]
+    parts.append("## Rows per split x language")
+    by_lang = pd.DataFrame({n: d["language"].value_counts() for n, d in splits.items()}).fillna(0).astype(int)
+    by_lang.index.name = "language"
+    parts += [_table(by_lang), ""]
+
+    parts.append("## Train: source x language")
+    sl = pd.crosstab(train["source"], train["language"])
+    parts += [_table(sl), ""]
+
+    parts.append("## Train: hate_label and script per language")
+    hl = pd.crosstab(train["language"], [train["hate_label"]])
+    hl.columns = [f"hate={c}" for c in hl.columns]
+    sc = pd.crosstab(train["language"], train["script"])
+    parts += [_table(hl.join(sc)), ""]
+
+    parts.append("## Train: auxiliary label coverage per language")
+    cov = pd.DataFrame({
+        "target": train.groupby("language")["target_label"].apply(lambda s: int((s >= 0).sum())),
+        "severity": train.groupby("language")["severity_label"].apply(lambda s: int((s >= 0).sum())),
+        "rationale": train.groupby("language")["rationale_spans"].apply(
+            lambda s: int((s.astype(str).str.len() > 2).sum())),
+    })
+    parts += [_table(cov), ""]
+
+    parts.append("## Train: target / severity class counts")
+    t = train["target_label"][train["target_label"] >= 0].astype(int).value_counts()
+    tgt = pd.DataFrame({"rows": [int(t.get(i, 0)) for i in range(len(TARGET_CLASSES))]},
+                       index=pd.Index(TARGET_CLASSES, name="target"))
+    v = train["severity_label"][train["severity_label"] >= 0].astype(int).value_counts()
+    sev = pd.DataFrame({"rows": [int(v.get(i, 0)) for i in range(len(SEVERITY_CLASSES))]},
+                       index=pd.Index(SEVERITY_CLASSES, name="severity"))
+    parts += [_table(tgt), "", _table(sev), ""]
+
+    warnings = [f"- language `{l}` has only {n} train rows (< {min_rows})"
+                for l, n in train["language"].value_counts().items() if n < min_rows]
+    warnings += [f"- target class `{c}` has only {n} train rows (< {min_target})"
+                 for c, n in zip(TARGET_CLASSES, tgt["rows"]) if n < min_target]
+    parts.append("## Warnings")
+    parts += warnings or ["- none"]
+    return "\n".join(parts) + "\n"
 
 
 if __name__ == "__main__":
