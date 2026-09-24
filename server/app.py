@@ -4,7 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
 
-from server.config import *
+from config import (
+    API_HOST, API_PORT, CORS_ORIGINS, DB_PATH, HISTORY_LIMIT, MAX_AUDIO_MB,
+)
 from server.models import *
 from server.db import init_db, save_analysis, get_history, save_feedback
 from pipeline.registry import ModelRegistry

@@ -17,7 +17,7 @@ offensive_profanity (1) as the deliberately-ambiguous middle.
 Runs on CPU by default so it can share a machine with a training run.
 
 Usage:
-    python calibrate_nli.py --n 400 --device cpu
+    python -m eval.calibrate_nli --n 400 --device cpu
 """
 
 import argparse

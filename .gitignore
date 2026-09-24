@@ -9,6 +9,9 @@ data_baseline_4source/
 *.zip
 *.tar.gz
 
+# ---- Model artifacts pulled from Drive (weights, ONNX, adapters) ----
+artifacts/
+
 # ---- Model checkpoints (~1.1 GB each, over GitHub's 100 MB file limit) ----
 checkpoints/**
 !checkpoints/**/

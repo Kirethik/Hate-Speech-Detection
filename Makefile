@@ -1,5 +1,7 @@
+.PHONY: install dev-api dev-web test eval package-data
 
-.PHONY: dev-api dev-web test eval install
+API_HOST ?= 127.0.0.1
+API_PORT ?= 8000
 
 install:
 	pip install -r requirements.txt
@@ -11,10 +13,11 @@ dev-web:
 	cd frontend && npm run dev
 
 test:
-	python -m pytest tests/ -q --tb=short
+	python -m pytest tests model_b_generation/tests -q --tb=short
 
 eval:
-	python -m eval.run_all
+	python -m eval.eval_hatecheck
+	python -m eval.probe_model
 
 package-data:
 	python scripts/package_data.py
