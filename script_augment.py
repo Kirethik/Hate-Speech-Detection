@@ -144,3 +144,42 @@ class ScriptAugmenter:
             return AugmentResult(text=text, script=script, spans_valid=True)  # roman→urdu not implemented
         spans_valid = len(new_text) == len(text)
         return AugmentResult(text=new_text, script=new_script, spans_valid=spans_valid)
+
+
+def expand_with_script_augmentation(df, frac: float = 0.3, seed: int = 42):
+    """
+    Return `df` plus transliterated COPIES of a random `frac` of its non-English
+    rows (native -> latin or latin -> native). This is what makes a model
+    trained mostly on romanized text usable on native-script ASR output.
+
+    Copies are added rather than rewriting in place, matching
+    identity_augment.expand_with_identity_augmentation. Rows with rationale
+    spans are skipped (transliteration changes character offsets), as are
+    rows whose transliteration is a no-op.
+    """
+    import pandas as pd
+    from text_norm import detect_script
+
+    if frac <= 0 or not _INDIC_TRANSLIT_AVAILABLE:
+        if frac > 0:
+            warnings.warn("script augmentation skipped: indic-transliteration not installed")
+        return df
+    has_spans = (df["rationale_spans"].astype(str).str.len() > 2
+                 if "rationale_spans" in df.columns else pd.Series(False, index=df.index))
+    eligible = df[(df["language"] != "en") & ~has_spans]
+    if eligible.empty:
+        return df
+    picked = eligible.sample(frac=min(frac, 1.0), random_state=seed)
+    random.seed(seed)
+    aug = ScriptAugmenter(p_augment=1.0)
+    texts, scripts = [], []
+    for text, lang in zip(picked["text"].astype(str), picked["language"]):
+        res = aug.augment(text, lang, detect_script(text))
+        texts.append(res.text)
+        scripts.append(res.script)
+    copy = picked.copy()
+    copy["text"] = texts
+    copy["script"] = scripts
+    copy = copy[copy["text"].values != picked["text"].astype(str).values]
+    copy["source"] = copy["source"].astype(str) + "_translit"
+    return pd.concat([df, copy], ignore_index=True)

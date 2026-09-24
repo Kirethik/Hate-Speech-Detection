@@ -12,14 +12,14 @@ modes that a good F1 will happily hide:
      That model scores well and is unusable for moderation.
 
   2. OBFUSCATION BRITTLENESS. Real abusers evade filters with leetspeak, spacing
-     and letter elongation. `normalize_code_mixed()` is still a stub, so the
-     model has no de-obfuscation front-end. This measures the resulting FLIP
+     and letter elongation. `normalize_code_mixed()` undoes the common tricks
+     before the model sees the text; this measures what still gets through, the
      RATE: of the abusive examples the model correctly catches, how many does it
      miss once perturbed? That is the README's RQ1 metric, and it is a property
      of the model that the test-set F1 cannot show you.
 
 Usage:
-    python -m eval.probe_model [--checkpoint checkpoints/model_a/best_model.pt]
+    python -m eval.probe_model [--checkpoint artifacts/model_a/best_model.pt]
 """
 
 import argparse
@@ -31,9 +31,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from dataset import SEVERITY_CLASSES, TARGET_CLASSES, normalize_code_mixed
-from model import CivitasDetector
-from transformers import XLMRobertaTokenizerFast
+from infer import load_model, score_batch
 
 # Crafted English cases. Kept to English because the point is to assert what the
 # CORRECT answer is, and inventing Tamil/Telugu test sentences I cannot verify
@@ -77,40 +75,27 @@ def perturb(text: str, mode: str) -> str:
     raise ValueError(mode)
 
 
-@torch.no_grad()
-def score_texts(model, tokenizer, texts, device, batch_size=64):
-    model.eval()
-    probs, severities, targets = [], [], []
-    for i in range(0, len(texts), batch_size):
-        chunk = [normalize_code_mixed(str(t)) for t in texts[i:i + batch_size]]
-        enc = tokenizer(chunk, truncation=True, max_length=128,
-                        padding=True, return_tensors="pt").to(device)
-        with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device.type == "cuda"):
-            out = model(input_ids=enc["input_ids"], attention_mask=enc["attention_mask"])
-        probs.append(torch.softmax(out["hate_logits"].float(), -1)[:, 1].cpu().numpy())
-        severities.append(out["severity_logits"].float().argmax(-1).cpu().numpy())
-        targets.append(out["target_logits"].float().argmax(-1).cpu().numpy())
-    return (np.concatenate(probs), np.concatenate(severities), np.concatenate(targets))
+def score_texts(m, texts):
+    """(hate probs, severity labels, target labels) for a list of texts."""
+    res = score_batch(m, [str(t) for t in texts], 64)
+    return (np.array([r["hate_prob"] for r in res]),
+            [r["severity"]["label"] for r in res],
+            [r["target"]["label"] for r in res])
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--checkpoint", default="checkpoints/model_a/best_model.pt")
-    ap.add_argument("--test_csv", default="data/test.csv")
+    ap.add_argument("--checkpoint", default="artifacts/model_a/best_model.pt")
+    # val, not test: this probe is run repeatedly while iterating, and every look
+    # at test while still making changes leaks it into model selection.
+    ap.add_argument("--eval_csv", default="data/val.csv")
+    ap.add_argument("--out", default="artifacts/model_a/robustness.json")
     ap.add_argument("--n_per_language", type=int, default=200)
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
-    threshold = ckpt["threshold"]
-
-    tokenizer = XLMRobertaTokenizerFast.from_pretrained(ckpt["args"]["encoder_name"])
-    model = CivitasDetector(
-        encoder_name=ckpt["args"]["encoder_name"],
-        num_target_classes=len(TARGET_CLASSES),
-        num_severity_classes=len(SEVERITY_CLASSES),
-    ).to(device)
-    model.load_state_dict(ckpt["model_state_dict"])
+    m = load_model(args.checkpoint, device)
+    threshold = m.threshold
     print(f"loaded {args.checkpoint}  (decision threshold {threshold:.2f}, fitted on val)\n")
 
     # ---- 1. crafted sanity cases -------------------------------------------
@@ -118,7 +103,7 @@ def main():
     print("1. SANITY CASES — does it separate abuse from mere identity mention?")
     print("=" * 78)
     texts = [c[0] for c in SANITY_CASES]
-    probs, sevs, tgts = score_texts(model, tokenizer, texts, device)
+    probs, sevs, tgts = score_texts(m, texts)
     n_wrong, id_wrong = 0, 0
     for (text, expected, why), p, s, t in zip(SANITY_CASES, probs, sevs, tgts):
         pred = bool(p >= threshold)
@@ -127,8 +112,8 @@ def main():
         if "IDENTITY MENTION" in why and not ok:
             id_wrong += 1
         print(f"  [{'ok ' if ok else 'MISS'}] p(abuse)={p:.3f} -> {'ABUSIVE' if pred else 'clean':<8} "
-              f"| exp {'ABUSIVE' if expected else 'clean':<8} | sev={SEVERITY_CLASSES[s]:<19} "
-              f"tgt={TARGET_CLASSES[t]:<18} | {why}")
+              f"| exp {'ABUSIVE' if expected else 'clean':<8} | sev={s:<19} "
+              f"tgt={t:<18} | {why}")
         if not ok:
             print(f"         text: {text!r}")
     n_id = sum('IDENTITY MENTION' in c[2] for c in SANITY_CASES)
@@ -139,12 +124,12 @@ def main():
     print("\n" + "=" * 78)
     print("2. OBFUSCATION FLIP RATE — of abuse it CATCHES, how much does evasion hide?")
     print("=" * 78)
-    test = pd.read_csv(args.test_csv)
+    test = pd.read_csv(args.eval_csv)
     abusive = test[test["hate_label"] == 1]
     sample = abusive.groupby("language", group_keys=False).head(args.n_per_language)
-    base_p, _, _ = score_texts(model, tokenizer, sample["text"].tolist(), device)
+    base_p, _, _ = score_texts(m, sample["text"].tolist())
     caught = base_p >= threshold
-    print(f"  sampled {len(sample)} truly-abusive test rows; model catches "
+    print(f"  sampled {len(sample)} truly-abusive eval rows; model catches "
           f"{caught.sum()} ({caught.mean():.1%}) at threshold {threshold:.2f}")
     caught_texts = sample["text"].astype(str).to_numpy()[caught]
     caught_langs = sample["language"].astype(str).to_numpy()[caught]
@@ -158,7 +143,7 @@ def main():
     for mode in ("leet", "spaced", "elongate", "punct"):
         pert = np.array([perturb(t, mode) for t in caught_texts], dtype=object)
         changed = pert != caught_texts
-        p, _, _ = score_texts(model, tokenizer, list(pert), device)
+        p, _, _ = score_texts(m, list(pert))
         flipped = (p < threshold) & changed
         denom = int(changed.sum())
         rate = float(flipped.sum() / denom) if denom else float("nan")
@@ -173,7 +158,7 @@ def main():
     print("\n  leetspeak flip rate by language (only rows the transform altered):")
     pert = np.array([perturb(t, "leet") for t in caught_texts], dtype=object)
     changed = pert != caught_texts
-    p, _, _ = score_texts(model, tokenizer, list(pert), device)
+    p, _, _ = score_texts(m, list(pert))
     flipped = (p < threshold) & changed
     by_lang = {}
     for lang in sorted(set(caught_langs)):
@@ -186,7 +171,7 @@ def main():
         by_lang[lang] = float(flipped[m].sum() / m.sum())
         print(f"    {lang:<9} {flipped[m].mean():6.1%}  ({int(flipped[m].sum())}/{int(m.sum())})")
 
-    out = Path("checkpoints/model_a/robustness.json")
+    out = Path(args.out)
     out.write_text(json.dumps({
         "threshold": threshold,
         "sanity_correct": int(len(SANITY_CASES) - n_wrong),

@@ -174,7 +174,7 @@ Verify every dataset's license allows your use (course project vs. public demo v
 ```
 Phase 2 of docs/BUILD_PLAN.md.
 
-1. Create data/SOURCES.md: a table with columns name | languages | local path | official URL |
+1. Create docs/SOURCES.md: a table with columns name | languages | local path | official URL |
    license | labels available | status. Leave URL and license as "TODO(user)" — do not invent them.
 
 2. Write converters in model_a/converters/ for every dataset folder that exists under data/raw/.
