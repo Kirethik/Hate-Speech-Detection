@@ -19,7 +19,7 @@ modes that a good F1 will happily hide:
      of the model that the test-set F1 cannot show you.
 
 Usage:
-    python probe_model.py [--checkpoint checkpoints/model_a/best_model.pt]
+    python -m eval.probe_model [--checkpoint checkpoints/model_a/best_model.pt]
 """
 
 import argparse

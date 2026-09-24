@@ -1,13 +1,13 @@
 
 import argparse, json
-from pipeline.config import MOCK_MODE
+from config import mock_mode
 from pipeline.registry import ModelRegistry
 
 def analyze_text(text: str, lang_hint: str | None = None, registry: ModelRegistry | None = None) -> dict:
     is_hate = False
     hate_prob = 0.1
     decision_path = "base"
-    if MOCK_MODE or registry and registry.mock_mode():
+    if mock_mode() or (registry and registry.mock_mode()):
         if "Bronzites" in text:
             is_hate = True
             hate_prob = 0.9

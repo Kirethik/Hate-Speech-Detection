@@ -20,8 +20,8 @@ Read the per-functionality table, not the headline. That table is the artefact
 worth putting in the report.
 
 Usage:
-    python eval_hatecheck.py --checkpoint checkpoints/model_a/best_model.pt
-    python eval_hatecheck.py --compare checkpoints/model_a/best_model_baseline.pt
+    python -m eval.eval_hatecheck --checkpoint checkpoints/model_a/best_model.pt
+    python -m eval.eval_hatecheck --compare checkpoints/model_a/best_model_baseline.pt
 """
 
 import argparse
