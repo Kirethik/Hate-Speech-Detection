@@ -28,7 +28,9 @@ MODEL_B_BASE = os.getenv("MODEL_B_BASE", "bigscience/mt0-base")
 # --------------------------------------------------------------------------- #
 # Languages
 # --------------------------------------------------------------------------- #
-SUPPORTED_LANGUAGES = ["en", "hi", "ur_roman", "ta", "te", "ml"]
+# Detection languages. "ur" = Urdu in Arabic script (what ASR emits), "ur_roman" =
+# romanized Urdu (what most Urdu training data is). "kn" comes from MACD / DravidianCodeMix.
+SUPPORTED_LANGUAGES = ["en", "hi", "ur", "ur_roman", "ta", "te", "ml", "kn"]
 
 # --------------------------------------------------------------------------- #
 # Model A decision thresholds (fallbacks; calibrated values override them)

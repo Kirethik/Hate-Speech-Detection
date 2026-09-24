@@ -1,5 +1,5 @@
 """
-Converts ShareChatAI/MACD (raw_data/MACD/dataset_80_10_10/<lang>_{train,val,test}.csv)
+Converts ShareChatAI/MACD (data/raw/MACD/dataset_80_10_10/<lang>_{train,val,test}.csv)
 to the unified schema.
 
 Per MACD's own README: label 0 = abusive, label 1 = non-abusive — the
@@ -20,7 +20,7 @@ LANGS = {
 }
 
 
-def convert(raw_dir="raw_data"):
+def convert(raw_dir="data/raw"):
     root = Path(raw_dir) / "MACD" / "dataset_80_10_10"
     rows = []
     for lang_name, code in LANGS.items():

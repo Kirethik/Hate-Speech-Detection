@@ -23,13 +23,6 @@ HATEXPLAIN_TARGET_MAP = {
     "Economic": "other", "Other": "other",
 }
 
-DRAVIDIAN_TARGET_MAP = {
-    "Individual": "none",  # individual-targeted → severity head handles it
-    "Group": "other",      # group-targeted but no finer category given
-    "Other": "other",
-    "None": "none",
-}
-
 HASOC_SEVERITY_MAP = {
     # task2 labels: HATE, OFFN, PRFN, NONE
     "HATE": "hate",
@@ -42,27 +35,56 @@ HASOC_SEVERITY_MAP = {
 }
 
 RUHSOLD_SEVERITY_MAP = {
+    # The 5 fine-grained RUHSOLD classes, exactly as converters/ruhsold.py names them
     "Normal": "normal",
-    "Abusive": "offensive_profanity",
-    "Offensive": "offensive_profanity",
-    "Hate Speech": "hate",
-    "Extreme": "hate",
+    "Profane/Untargeted": "offensive_profanity",
+    "Abusive/Offensive": "offensive_profanity",
+    "Religious Hate": "hate",
+    "Sexism": "hate",
 }
 
 SBIC_TARGET_MAP = {
-    # SBIC whoTarget field — a free-text field, map common values
-    "women": "gender", "men": "gender", "lgbtq": "gender", "gay": "gender",
-    "black": "caste_ethnicity", "white": "caste_ethnicity", "asian": "caste_ethnicity",
-    "hispanic": "caste_ethnicity", "latinx": "caste_ethnicity", "jewish": "religion",
-    "muslim": "religion", "christian": "religion", "refugee": "nationality_migrant",
-    "immigrant": "nationality_migrant", "disabled": "disability", "disability": "disability",
+    # SBIC targetCategory values (casefolded). This is the only source of
+    # "political" supervision in the corpus (via "social").
+    "race": "caste_ethnicity",
+    "gender": "gender",
+    "culture": "religion",       # SBIC's culture bucket is religion/culture
+    "disabled": "disability",
+    "social": "political",
+    "body": "other",
+    "victim": "other",
 }
 
 TOXIGEN_TARGET_MAP = {
-    "black": "caste_ethnicity", "asian": "caste_ethnicity", "native_american": "caste_ethnicity",
-    "latino": "caste_ethnicity", "jewish": "religion", "muslim": "religion",
-    "lgbtq": "gender", "women": "gender", "mental_dis": "disability",
-    "physical_dis": "disability",
+    # ToxiGen target_group values (casefolded, spaces/hyphens -> "_").
+    # converters/toxigen.py also does substring matching ("black folks" -> black).
+    "jewish": "religion",
+    "muslim": "religion",
+    "women": "gender",
+    "trans": "gender",
+    "lgbtq": "gender",
+    "bisexual": "gender",
+    "black": "caste_ethnicity",
+    "asian": "caste_ethnicity",
+    "chinese": "caste_ethnicity",
+    "latino": "caste_ethnicity",
+    "mexican": "caste_ethnicity",
+    "native_american": "caste_ethnicity",
+    "middle_east": "caste_ethnicity",
+    "mental_dis": "disability",   # also matches "mental_disability"
+    "physical_dis": "disability",  # also matches "physical_disability"
+    "immigrant": "nationality_migrant",
+}
+
+# CONSTRAINT 2021 Hindi hostility. Posts carry a comma-separated label set.
+# Resolved in converters/constraint2021.py by priority: hate > offensive/defamation
+# > non-hostile. "fake" alone is misinformation, not abuse -> row is dropped.
+CONSTRAINT_SEVERITY_MAP = {
+    "hate": "hate",
+    "offensive": "offensive_profanity",
+    "defamation": "offensive_profanity",  # attacks an individual's reputation, not a group
+    "non-hostile": "normal",
+    "fake": None,
 }
 
 

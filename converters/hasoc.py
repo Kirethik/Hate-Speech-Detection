@@ -44,7 +44,7 @@ from label_maps import (  # noqa: E402
     TARGET_CLASSES,
     HASOC_SEVERITY_MAP,
 )
-from dataset import detect_script  # noqa: E402
+from text_norm import detect_script  # noqa: E402
 
 
 _TASK1_HOF = "HOF"
@@ -147,7 +147,7 @@ def _load_year(root: Path, year: int) -> list[dict]:
     return rows
 
 
-def convert(raw_dir="raw_data") -> pd.DataFrame:
+def convert(raw_dir="data/raw") -> pd.DataFrame:
     root = Path(raw_dir) / "hasoc"
     all_rows: list[dict] = []
 

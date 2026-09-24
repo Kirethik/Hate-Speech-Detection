@@ -31,3 +31,32 @@ def test_urdu_native_to_roman():
     res = aug.augment("ا", language="ur_roman", script="native")
     assert res.text == "a"
     assert ord(res.text[0]) < 128
+
+
+# --- transliteration must actually change the script (it silently no-opped before) ---
+translit = pytest.importorskip("indic_transliteration")
+
+
+@pytest.mark.parametrize("text,lang", [
+    ("नमस्ते दोस्तों", "hi"),
+    ("நீ ஒரு நல்ல மனிதன்", "ta"),
+    ("నువ్వు మంచివాడివి", "te"),
+    ("തെണ്ടി പട്ടി", "ml"),
+    ("ನೀನು ಒಳ್ಳೆಯವನು", "kn"),
+    ("تم اچھے ہو", "ur"),
+])
+def test_native_to_latin_produces_plain_ascii(text, lang):
+    from script_augment import ScriptAugmenter
+    from text_norm import detect_script
+    out = ScriptAugmenter(p_augment=1.0).augment(text, lang, "native")
+    assert out.script == "latin"
+    assert detect_script(out.text) == "latin"
+    assert out.text.isascii(), out.text
+    assert out.text == out.text.lower()
+
+
+def test_latin_to_native_hindi_has_no_word_final_virama():
+    from script_augment import ScriptAugmenter
+    out = ScriptAugmenter(p_augment=1.0).augment("tum bahut acche ho", "hi", "latin")
+    assert out.script == "native"
+    assert "् " not in out.text + " "

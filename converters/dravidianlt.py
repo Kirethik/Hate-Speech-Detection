@@ -18,7 +18,9 @@ Column format: tab-separated, no header row — col0=text, col1=label.
 (Some files have a header; the converter detects this automatically.)
 
 Label sets vary slightly by language/year; all non-"Not_offensive" and
-non-"none" labels map to hate_label=1. target_label and severity_label
+non-"none" labels map to hate_label=1. "not-<language>" rows (annotator judged
+the text is not in that language) are not a hate judgement and are DROPPED,
+matching converters/dravidiancodemix.py. target_label and severity_label
 are left -1 (DravidianLangTech does not provide these).
 """
 
@@ -28,14 +30,10 @@ import pandas as pd
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from dataset import detect_script  # noqa: E402
 
 
 # Labels that map to hate_label=0 (not offensive)
-_NOT_OFFENSIVE = frozenset({
-    "Not_offensive", "not-malayalam", "not-tamil", "not-telugu",
-    "none", "NOT", "0",
-})
+_NOT_OFFENSIVE = frozenset({"not_offensive", "none", "not", "0", "non-hate", "non_hate"})
 
 
 _LANG_DIRS = {
@@ -66,7 +64,7 @@ def _load_file(path: Path) -> pd.DataFrame | None:
         return None
 
 
-def convert(raw_dir: str = "raw_data") -> pd.DataFrame:
+def convert(raw_dir: str = "data/raw") -> pd.DataFrame:
     root = Path(raw_dir) / "dravidianlt"
     rows = []
 
@@ -85,15 +83,13 @@ def convert(raw_dir: str = "raw_data") -> pd.DataFrame:
                     continue
                 for _, r in df.iterrows():
                     text = str(r["text"]).strip()
-                    label = str(r["label"]).strip()
-                    if not text or label in _NOT_OFFENSIVE or label.startswith("not-"):
-                        hate = 0
-                    else:
-                        hate = 1
+                    label = str(r["label"]).strip().casefold()
+                    if not text or label.startswith("not-"):
+                        continue
+                    hate = 0 if label in _NOT_OFFENSIVE else 1
                     rows.append({
                         "text": text,
                         "language": lang_code,
-                        "script": detect_script(text),
                         "hate_label": hate,
                         "target_label": -1,
                         "severity_label": -1,
@@ -105,7 +101,7 @@ def convert(raw_dir: str = "raw_data") -> pd.DataFrame:
 
     if not rows:
         return pd.DataFrame(columns=[
-            "text", "language", "script", "hate_label", "target_label",
+            "text", "language", "hate_label", "target_label",
             "severity_label", "rationale_spans", "source", "split",
         ])
     return pd.DataFrame(rows).drop_duplicates(subset=["text", "language"])

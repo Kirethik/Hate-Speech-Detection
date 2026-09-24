@@ -23,7 +23,7 @@ be stripped or every example trains on a spurious leading "b'".
 import pandas as pd
 from huggingface_hub import hf_hub_download
 
-from label_maps import TARGET_CLASSES, SEVERITY_CLASSES, TOXIGEN_TOXIGEN_TARGET_MAP, TARGET_CLASSES
+from label_maps import TARGET_CLASSES, SEVERITY_CLASSES, TOXIGEN_TARGET_MAP
 
 from ._hf import cap, hash_split, strip_byte_prefix
 
@@ -50,7 +50,7 @@ def _target_index(raw) -> int:
     return -1  # unknown group: mask rather than guess
 
 
-def convert(raw_dir="raw_data", max_rows: int | None = None):
+def convert(raw_dir="data/raw", max_rows: int | None = None):
     path = hf_hub_download(REPO, FILENAME, repo_type="dataset")
     df = pd.read_csv(path).dropna(subset=["text", "label"])
 

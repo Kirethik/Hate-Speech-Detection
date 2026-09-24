@@ -26,7 +26,7 @@ from pathlib import Path
 import pandas as pd
 
 
-def convert_hatecheck(raw_dir: str = "raw_data") -> pd.DataFrame:
+def convert_hatecheck(raw_dir: str = "data/raw") -> pd.DataFrame:
     """English HateCheck functional test set."""
     path = Path(raw_dir) / "hatecheck" / "test_suite_cases.csv"
     if not path.exists():
@@ -43,7 +43,7 @@ def convert_hatecheck(raw_dir: str = "raw_data") -> pd.DataFrame:
     })
 
 
-def convert_multilingual(raw_dir: str = "raw_data") -> pd.DataFrame:
+def convert_multilingual(raw_dir: str = "data/raw") -> pd.DataFrame:
     """Multilingual HateCheck functional test set (en + hi included)."""
     path = Path(raw_dir) / "multilingual_hatecheck" / "test_suite_cases.csv"
     if not path.exists():
@@ -61,7 +61,7 @@ def convert_multilingual(raw_dir: str = "raw_data") -> pd.DataFrame:
     })
 
 
-def save_functional_tests(raw_dir: str = "raw_data",
+def save_functional_tests(raw_dir: str = "data/raw",
                            out_dir: str = "data/processed/functional_tests") -> None:
     """Save HateCheck sets to the functional-tests directory (never to training)."""
     out = Path(out_dir)

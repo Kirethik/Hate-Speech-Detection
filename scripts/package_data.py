@@ -83,12 +83,13 @@ def main():
             "hate_label_counts": df["hate_label"].value_counts().to_dict(),
             "language_counts": df["language"].value_counts().to_dict(),
             "source_counts": df["source"].value_counts().to_dict(),
+            "script_counts": df["script"].value_counts().to_dict() if "script" in df else {},
         }
         manifest["files"][f"{split}.parquet"] = _file_sha256(parquet_path)
-        print(f"  {split}: {len(df):>7} rows → {parquet_path.name}")
+        print(f"  {split}: {len(df):>7} rows -> {parquet_path.name}")
 
     # ── Copy supporting files ───────────────────────────────────────────────
-    for fname in ("label_maps.py", "config.py"):
+    for fname in ("label_maps.py", "config.py", "data_config.yaml"):
         src = repo_root / fname
         if src.exists():
             shutil.copy2(src, tmp_dir / fname)
@@ -98,7 +99,7 @@ def main():
 
     # ── Write manifest ──────────────────────────────────────────────────────
     manifest_path = tmp_dir / "manifest.json"
-    with open(manifest_path, "w") as f:
+    with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
 
     # ── Zip everything ──────────────────────────────────────────────────────
@@ -110,7 +111,7 @@ def main():
     shutil.rmtree(tmp_dir)
 
     total_rows = sum(s["rows"] for s in manifest["splits"].values())
-    print(f"\n✓ {zip_path}  ({zip_path.stat().st_size / 1e6:.1f} MB)")
+    print(f"\nOK {zip_path}  ({zip_path.stat().st_size / 1e6:.1f} MB)")
     print(f"  Total rows: {total_rows:,}")
     print(f"  Git commit: {manifest['git_commit']}")
     print(f"\nUpload this file to MyDrive/civitas/ in Google Drive before running Colab.")

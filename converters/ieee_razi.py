@@ -26,15 +26,18 @@ import pandas as pd
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from converters._hf import hash_split  # noqa: E402
-from dataset import detect_script  # noqa: E402
+from text_norm import detect_script  # noqa: E402
 
 
 # Candidate column names for text and label — checked in priority order
 _TEXT_CANDIDATES = ["tweet", "text", "post", "sentence", "content"]
 _LABEL_CANDIDATES = ["label", "class", "hate", "hate_label", "category"]
 
-# Values that map to hate_label=1
-_HATE_VALUES = frozenset({"1", "hate", "yes", "hateful", "abusive", "offensive", "1.0"})
+# Label values, casefolded. Anything in neither set is DROPPED and reported,
+# never silently treated as not-hate.
+_HATE_VALUES = frozenset({"1", "1.0", "hate", "yes", "hateful", "abusive", "offensive"})
+_NOT_HATE_VALUES = frozenset({"0", "0.0", "no", "not", "not-hate", "not hate", "non-hate",
+                              "normal", "neutral", "none"})
 
 
 def _find_col(df: pd.DataFrame, candidates: list[str]) -> str | None:
@@ -59,13 +62,13 @@ def _load_file(path: Path) -> pd.DataFrame | None:
     return None
 
 
-def convert(raw_dir: str = "raw_data") -> pd.DataFrame:
+def convert(raw_dir: str = "data/raw") -> pd.DataFrame:
     root = Path(raw_dir) / "ieee_razi"
     rows = []
 
     if not root.exists():
         return pd.DataFrame(columns=[
-            "text", "language", "script", "hate_label", "target_label",
+            "text", "language", "hate_label", "target_label",
             "severity_label", "rationale_spans", "source", "split",
         ])
 
@@ -96,26 +99,32 @@ def convert(raw_dir: str = "raw_data") -> pd.DataFrame:
         print(f"  [ieee_razi] {path.name}: text='{text_col}', label='{label_col}', "
               f"rows={len(df)}, label_values={df[label_col].value_counts().to_dict()}")
 
+        unknown = {}
         for _, r in df.dropna(subset=[text_col, label_col]).iterrows():
             text = str(r[text_col]).strip()
             raw_label = str(r[label_col]).strip().lower()
             if not text:
                 continue
+            if raw_label not in _HATE_VALUES and raw_label not in _NOT_HATE_VALUES:
+                unknown[raw_label] = unknown.get(raw_label, 0) + 1
+                continue
             rows.append({
                 "text": text,
-                "language": "ur_roman",
-                "script": detect_script(text),
-                "hate_label": 1 if raw_label in _HATE_VALUES else 0,
+                # Urdu in Arabic script is "ur"; romanized Urdu is "ur_roman"
+                "language": "ur" if detect_script(text) == "native" else "ur_roman",
+                "hate_label": int(raw_label in _HATE_VALUES),
                 "target_label": -1,
                 "severity_label": -1,
                 "rationale_spans": "[]",
                 "source": "ieee_razi",
                 "split": hash_split(text),
             })
+        if unknown:
+            print(f"  [ieee_razi] dropped rows with unrecognised labels: {unknown}")
 
     if not rows:
         return pd.DataFrame(columns=[
-            "text", "language", "script", "hate_label", "target_label",
+            "text", "language", "hate_label", "target_label",
             "severity_label", "rationale_spans", "source", "split",
         ])
     return pd.DataFrame(rows).drop_duplicates(subset=["text"])

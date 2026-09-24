@@ -2,7 +2,7 @@
 Shared helpers for the implicit-hate converters.
 
 Unlike the five original sources, these four ship from the HuggingFace Hub
-rather than `raw_data/`, so they download-and-cache instead of reading a local
+rather than `data/raw/`, so they download-and-cache instead of reading a local
 path. Everything lands in the normal HF cache (~/.cache/huggingface), so a
 second run is offline.
 
