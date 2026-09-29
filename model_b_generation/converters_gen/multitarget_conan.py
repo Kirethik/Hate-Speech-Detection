@@ -1,69 +1,46 @@
-import pandas as pd
-import hashlib
+"""
+Multitarget-CONAN (Fanton et al. 2021): English hate speech / counter-narrative
+pairs over 8 targets. Task = respond.
+
+Loaded from the HuggingFace mirror `Rhma/Multitarget-CONAN`, whose columns
+were checked: INDEX, HATE_SPEECH, COUNTER_NARRATIVE, TARGET, VERSION.
+Fallback: a local CSV with the same columns at
+data/raw/multitarget_conan/Multitarget-CONAN.csv
+"""
+
 import logging
-import traceback
-from datasets import load_dataset
-import requests
-import io
+from pathlib import Path
+
+import pandas as pd
+
+from ._common import CONAN_TARGET_MAP, empty_df, finalize, make_row
 
 logger = logging.getLogger(__name__)
 
-def get_empty_df():
-    return pd.DataFrame(columns=['hate_text', 'language', 'style', 'response_text', 'source', 'split'])
 
-def assign_split(text):
-    if not isinstance(text, str):
-        text = str(text)
-    hash_val = int(hashlib.md5(text.encode('utf-8')).hexdigest(), 16)
-    return 'val' if hash_val % 1000 < 100 else 'train'
-
-def convert() -> pd.DataFrame:
-    """
-    Loads Multitarget-CONAN dataset from HuggingFace or fallback GitHub CSV.
-    Maps columns: HATE_SPEECH -> hate_text, COUNTER_NARRATIVE -> response_text.
-    Sets language='en', style='empathetic', source='multitarget_conan'.
-    """
-    df = None
+def _load(raw_dir: str) -> pd.DataFrame | None:
+    local = Path(raw_dir) / "multitarget_conan" / "Multitarget-CONAN.csv"
+    if local.exists():
+        return pd.read_csv(local)
     try:
-        try:
-            ds = load_dataset('Rhma/Multitarget-CONAN', split='train')
-            df = ds.to_pandas()
-        except Exception as e:
-            logger.warning(f"Failed to load Rhma/Multitarget-CONAN: {e}")
-            url = "https://raw.githubusercontent.com/marcoguerini/Multitarget-CONAN/master/Multitarget-CONAN.csv"
-            resp = requests.get(url, timeout=10)
-            resp.raise_for_status()
-            df = pd.read_csv(io.StringIO(resp.text))
-                
-        if df is None or df.empty:
-            return get_empty_df()
-
-        col_mapping = {c: c.upper() for c in df.columns}
-        df.rename(columns=col_mapping, inplace=True)
-        
-        if 'HATE_SPEECH' not in df.columns or 'COUNTER_NARRATIVE' not in df.columns:
-            logger.warning("Required columns missing in Multitarget-CONAN")
-            return get_empty_df()
-            
-        df = df.rename(columns={'HATE_SPEECH': 'hate_text', 'COUNTER_NARRATIVE': 'response_text'})
-        
-        df['language'] = 'en'
-        df['style'] = 'empathetic'
-        df['source'] = 'multitarget_conan'
-        
-        df = df.dropna(subset=['hate_text', 'response_text'])
-        df['split'] = df['hate_text'].apply(assign_split)
-        
-        return df[['hate_text', 'language', 'style', 'response_text', 'source', 'split']]
-        
+        from datasets import load_dataset
+        return load_dataset("Rhma/Multitarget-CONAN", split="train").to_pandas()
     except Exception as e:
-        logger.error(f"Error processing Multitarget-CONAN: {e}")
-        logger.debug(traceback.format_exc())
-        return get_empty_df()
+        logger.warning("Multitarget-CONAN unavailable (%s). Put the CSV at %s", e, local)
+        return None
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-    res = convert()
-    print(f"Shape: {res.shape}")
-    if not res.empty:
-        print(res.head())
+
+def convert(raw_dir: str = "data/raw") -> pd.DataFrame:
+    df = _load(raw_dir)
+    if df is None or df.empty:
+        return empty_df()
+    df = df.rename(columns={c: c.upper() for c in df.columns})
+    if not {"HATE_SPEECH", "COUNTER_NARRATIVE"} <= set(df.columns):
+        logger.warning("Multitarget-CONAN: unexpected columns %s", list(df.columns))
+        return empty_df()
+    targets = df["TARGET"] if "TARGET" in df.columns else pd.Series(["other"] * len(df))
+    return finalize(
+        make_row("respond", h, c, "en", "multitarget_conan",
+                 CONAN_TARGET_MAP.get(str(t).strip().upper(), "other"))
+        for h, c, t in zip(df["HATE_SPEECH"], df["COUNTER_NARRATIVE"], targets)
+    )

@@ -8,8 +8,9 @@ Produces artifacts/civitas_data_v2.zip containing:
   - manifest.json  (row counts, git commit hash, creation timestamp)
 
 Usage:
-    python scripts/package_data.py
-    python scripts/package_data.py --data_dir data --out_dir artifacts
+    python scripts/package_data.py                 # Model A -> civitas_data_v2.zip
+    python scripts/package_data.py --kind gen      # Model B -> civitas_gen_data.zip
+                                                   # (reads data/gen/{train,val,test}.parquet)
 """
 
 import argparse
@@ -49,7 +50,10 @@ def main():
                         help="Directory containing train.csv, val.csv, test.csv")
     parser.add_argument("--out_dir", default="artifacts",
                         help="Output directory for the zip file")
+    parser.add_argument("--kind", choices=["model_a", "gen"], default="model_a")
     args = parser.parse_args()
+    if args.kind == "gen" and args.data_dir == "data":
+        args.data_dir = "data/gen"
 
     data_dir = Path(args.data_dir)
     out_dir = Path(args.out_dir)
@@ -69,27 +73,34 @@ def main():
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
     for split in ("train", "val", "test"):
-        csv_path = data_dir / f"{split}.csv"
-        if not csv_path.exists():
-            print(f"  WARNING: {csv_path} not found — skipping {split} split")
+        src_path = next((p for p in (data_dir / f"{split}.parquet", data_dir / f"{split}.csv")
+                         if p.exists()), None)
+        if src_path is None:
+            print(f"  WARNING: no {split}.parquet/.csv in {data_dir} — skipping {split} split")
             continue
 
-        df = pd.read_csv(csv_path)
+        df = pd.read_parquet(src_path) if src_path.suffix == ".parquet" else pd.read_csv(src_path)
         parquet_path = tmp_dir / f"{split}.parquet"
         df.to_parquet(parquet_path, index=False, compression="zstd")
 
-        manifest["splits"][split] = {
+        info = {
             "rows": len(df),
-            "hate_label_counts": df["hate_label"].value_counts().to_dict(),
             "language_counts": df["language"].value_counts().to_dict(),
             "source_counts": df["source"].value_counts().to_dict(),
-            "script_counts": df["script"].value_counts().to_dict() if "script" in df else {},
         }
+        if args.kind == "model_a":
+            info["hate_label_counts"] = df["hate_label"].value_counts().to_dict()
+            info["script_counts"] = df["script"].value_counts().to_dict() if "script" in df else {}
+        else:
+            info["task_counts"] = df["task"].value_counts().to_dict()
+        manifest["splits"][split] = info
         manifest["files"][f"{split}.parquet"] = _file_sha256(parquet_path)
         print(f"  {split}: {len(df):>7} rows -> {parquet_path.name}")
 
     # ── Copy supporting files ───────────────────────────────────────────────
-    for fname in ("label_maps.py", "config.py", "data_config.yaml"):
+    support = (("label_maps.py", "config.py", "data_config.yaml") if args.kind == "model_a"
+               else ("config.py",))
+    for fname in support:
         src = repo_root / fname
         if src.exists():
             shutil.copy2(src, tmp_dir / fname)
@@ -103,7 +114,7 @@ def main():
         json.dump(manifest, f, indent=2)
 
     # ── Zip everything ──────────────────────────────────────────────────────
-    zip_path = out_dir / "civitas_data_v2.zip"
+    zip_path = out_dir / ("civitas_data_v2.zip" if args.kind == "model_a" else "civitas_gen_data.zip")
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for item in tmp_dir.iterdir():
             zf.write(item, item.name)

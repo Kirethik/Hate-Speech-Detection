@@ -24,8 +24,32 @@ Never commit raw dataset files. Only converters and this table belong in the rep
 
 ## Model B — Alternate Speech Datasets
 
-| Name | Languages | Local path | Official URL | License | Use | Status |
+Built by `python -m model_b_generation.build_dataset_gen` (prints rows per source), then
+`python -m model_b_generation.prepare_splits_gen`. A missing source is skipped with a warning.
+
+| Name | Languages | Local path (or HF id) | Official URL | License | Use | Status |
 |---|---|---|---|---|---|---|
+| ParaDetox | en | HF `s-nlp/paradetox`, or `data/raw/paradetox/*.csv` | https://huggingface.co/datasets/s-nlp/paradetox | TODO(user) — check the dataset card | Rewrite | ⏳ Converter written, verify columns |
+| TextDetox 2024 | en, hi | HF `textdetox/multilingual_paradetox` | https://huggingface.co/datasets/textdetox/multilingual_paradetox | TODO(user) | Rewrite | ⏳ Converter written, verify columns |
+| Multitarget-CONAN | en | HF `Rhma/Multitarget-CONAN`, or `data/raw/multitarget_conan/Multitarget-CONAN.csv` | https://github.com/marcoguerini/CONAN | TODO(user) | Respond | ✅ Columns checked (INDEX, HATE_SPEECH, COUNTER_NARRATIVE, TARGET, VERSION) |
+| CONAN | en (EN rows of a multilingual set) | `data/raw/conan/CONAN.csv` or `CONAN.json` | https://github.com/marcoguerini/CONAN | TODO(user) | Respond | ⏳ Converter written, verify columns |
+| Qian et al. 2019 (Reddit/Gab interventions) | en | `data/raw/qian_counter/{reddit,gab}.csv` | TODO(user) — the paper's GitHub repo | TODO(user) | Respond | ⏳ Converter written, verify columns |
+| IndicCONAN | hi, en | `data/raw/indic_conan/*.csv` | TODO(user) | TODO(user) | Respond | ⏳ Converter written, verify columns |
+| Silver translations (IndicTrans2) | hi, ta, te, ml, ur_roman | `data/gen/silver_pairs.parquet` (from notebook 03a) | https://huggingface.co/ai4bharat/indictrans2-en-indic-dist-200M | TODO(user) — check the model licence | Rewrite + Respond | ⏳ Made by notebook 03a, reviewed with `review_silver` |
+
+**Verify after downloading** (formats assumed, not checked):
+
+| Source | Converter expects |
+|---|---|
+| ParaDetox / TextDetox | toxic + neutral column pairs named `en_toxic_comment`/`en_neutral_comment` or `toxic_sentence`/`neutral_sentence`; TextDetox has one split per language code (`en`, `hi`) |
+| CONAN | a hate column (`hateSpeech`/`HATE_SPEECH`), a counter column (`counterSpeech`/`COUNTER_NARRATIVE`), and either a `language` column or `cn_id` starting with `EN` |
+| Qian | `text` = numbered posts ("1. ...", one per line), `hate_speech_idx` = list of hateful post numbers, `response` = list of intervention strings |
+| IndicCONAN | a column containing "hate", one containing "counter", optional `language` and `target` |
+
+The earlier TER mini-corpus (synthetic template sentences) and the LT-EDI stub were removed:
+templated pairs teach the model to parrot templates, and LT-EDI had no data.
+
+---|---|---|---|---|---|---|
 | CONAN | en (+EU) | HuggingFace cache | https://github.com/marcoguerini/CONAN | CC BY-NC 4.0 | Respond | ✅ Converter done |
 | Multi-CONAN / Multitarget-CONAN | en | HuggingFace cache | TODO(user) | TODO(user) | Respond | ✅ Converter done |
 | Gab & Reddit counter-speech (Qian et al.) | en | `data/raw/qian_counter/` | https://github.com/ziqizhang/iac_counter_speech | TODO(user) | Respond | ⏳ Converter written |

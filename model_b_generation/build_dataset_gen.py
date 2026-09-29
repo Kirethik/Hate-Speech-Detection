@@ -1,15 +1,10 @@
 """
-Runs every converters_gen/<source>.py and concatenates their output into
-data/train_gen.csv / data/val_gen.csv (the files train_gen.py expects).
+Step 1 of the Model B data build: run every converters_gen source and write
+one table of (task, source_text, target_text, ...) pairs.
 
-Mirrors the structure of Model A's build_dataset.py.
+    python -m model_b_generation.build_dataset_gen [--raw_dir data/raw] [--out data/gen/pairs.parquet]
 
-Each source module carries its own hash-based train/val split, so no
-global stratified split is needed here — concatenating per-source splits
-preserves language representation in both train and val.
-
-Usage:
-    python -m model_b_generation.build_dataset_gen [--output_dir data]
+Next: python -m model_b_generation.prepare_splits_gen
 """
 
 import argparse
@@ -19,131 +14,62 @@ from pathlib import Path
 
 import pandas as pd
 
-# Allow running as `python build_dataset_gen.py` from model_b_generation/
-_PKG_DIR = str(Path(__file__).resolve().parent)
-if _PKG_DIR not in sys.path:
-    sys.path.insert(0, _PKG_DIR)
-
-from converters_gen import conan, multitarget_conan, indic_conan, lt_edi, ter_mini
+from model_b_generation.converters_gen import PAIR_COLUMNS, SOURCES
+from model_b_generation.prompts import LANGUAGE_NAMES, TASKS
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_COLUMNS = [
-    "hate_text", "language", "style", "response_text", "source",
-]
 
-# Ordered: primary sources first, then fallback, then multilingual
-SOURCES = [
-    ("indic_conan",       indic_conan,       "PRIMARY — IndicCONAN (Hindi/English)"),
-    ("lt_edi",            lt_edi,             "PRIMARY — LT-EDI 2026 (English/Tamil)"),
-    ("conan",             conan,              "FALLBACK — CONAN ACL 2019 (English)"),
-    ("multitarget_conan", multitarget_conan,  "FALLBACK — Multitarget-CONAN (English)"),
-    ("ter_mini",          ter_mini,           "MULTILINGUAL — TER Mini-Corpus (en/hi/ta)"),
-]
+def validate(df: pd.DataFrame, name: str) -> pd.DataFrame:
+    missing = set(PAIR_COLUMNS) - set(df.columns)
+    if missing:
+        raise ValueError(f"{name}: missing columns {sorted(missing)}")
+    bad_task = ~df["task"].isin(TASKS)
+    bad_lang = ~df["language"].isin(LANGUAGE_NAMES)
+    if bad_task.any() or bad_lang.any():
+        logger.warning("%s: dropping %d rows with unknown task/language", name,
+                       int((bad_task | bad_lang).sum()))
+        df = df[~(bad_task | bad_lang)]
+    return df[PAIR_COLUMNS]
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Build the counter-narrative generation dataset"
-    )
-    parser.add_argument("--output_dir", default="data",
-                        help="Directory to write train_gen.csv / val_gen.csv")
-    args = parser.parse_args()
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s  %(levelname)s  %(message)s",
-    )
-
-    out_dir = Path(args.output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
+def build(raw_dir: str) -> pd.DataFrame:
     frames = []
-    used_sources = []
-    skipped_sources = []
-
-    print("=" * 72)
-    print("  Model B Dataset Builder — converters_gen")
-    print("=" * 72)
-
-    for name, module, label in SOURCES:
-        print(f"\n{'─' * 60}")
-        print(f"  [{label}]  {name}")
+    for name, module in SOURCES.items():
         try:
-            df = module.convert()
-        except Exception as e:
-            logger.error("  converter %s raised: %s", name, e)
-            df = pd.DataFrame()
+            df = module.convert(raw_dir)
+        except Exception as e:  # one broken source must not stop the build
+            logger.error("%s failed: %s", name, e)
+            continue
+        if df.empty:
+            print(f"  {name:<18} 0 rows (not downloaded?)")
+            continue
+        df = validate(df, name)
+        print(f"  {name:<18} {len(df):>7} rows  {df.groupby(['task', 'language']).size().to_dict()}")
+        frames.append(df)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=PAIR_COLUMNS)
 
-        if df is None or df.empty:
-            skipped_sources.append(name)
-            print(f"  ⚠  {name}: 0 rows (skipped or unavailable)")
-        else:
-            # Validate schema
-            missing = set(SCHEMA_COLUMNS) - set(df.columns)
-            if missing:
-                logger.error(
-                    "  %s is missing columns %s — skipping", name, missing
-                )
-                skipped_sources.append(name)
-                continue
 
-            # Validate no nulls in required fields
-            null_counts = df[["hate_text", "response_text"]].isnull().sum()
-            if null_counts.any():
-                before = len(df)
-                df = df.dropna(subset=["hate_text", "response_text"])
-                logger.warning(
-                    "  %s: dropped %d rows with null hate_text/response_text",
-                    name, before - len(df),
-                )
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[1])
+    p.add_argument("--raw_dir", default="data/raw")
+    p.add_argument("--out", default="data/gen/pairs.parquet")
+    a = p.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-            split_counts = (
-                df["split"].value_counts().to_dict()
-                if "split" in df.columns
-                else {"unsplit": len(df)}
-            )
-            lang_counts = df["language"].value_counts().to_dict()
-
-            print(f"  ✓  {name}: {len(df)} rows")
-            print(f"       splits:    {split_counts}")
-            print(f"       languages: {lang_counts}")
-
-            used_sources.append(name)
-            frames.append(df)
-
-    if not frames:
-        logger.error("No data collected from any source. Exiting.")
-        sys.exit(1)
-
-    combined = pd.concat(frames, ignore_index=True)
-    combined = combined[combined["hate_text"].astype(str).str.strip().str.len() > 0]
-
-    # ── Write train / val splits ──
-    for split_name in ["train", "val"]:
-        if "split" in combined.columns:
-            split_df = combined[combined["split"] == split_name][SCHEMA_COLUMNS]
-        else:
-            # If no split column, default all to train
-            split_df = combined[SCHEMA_COLUMNS] if split_name == "train" else pd.DataFrame(columns=SCHEMA_COLUMNS)
-
-        out_path = out_dir / f"{split_name}_gen.csv"
-        split_df.to_csv(out_path, index=False)
-        print(f"\nwrote {len(split_df):>6} rows → {out_path}")
-        if len(split_df) > 0:
-            print(f"  per-language: {split_df['language'].value_counts().to_dict()}")
-            print(f"  per-source:   {split_df['source'].value_counts().to_dict()}")
-            print(f"  per-style:    {split_df['style'].value_counts().to_dict()}")
-
-    # ── Audit log ──
-    print(f"\n{'=' * 72}")
-    print("  AUDIT SUMMARY")
-    print(f"{'=' * 72}")
-    print(f"  Sources USED:    {used_sources}")
-    print(f"  Sources SKIPPED: {skipped_sources}")
-    print(f"  Total rows:      {len(combined)}")
-    print(f"{'=' * 72}")
+    df = build(a.raw_dir)
+    if df.empty:
+        print("No Model B data found. See docs/SOURCES.md for where each dataset goes.")
+        return 1
+    out = Path(a.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(out, index=False)
+    print(f"\nwrote {len(df)} pairs -> {out}")
+    print(df.groupby(["task", "language", "split"]).size().to_string())
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
