@@ -1,152 +1,152 @@
 """
-Turns the raw build_dataset_gen.py output into trustworthy splits.
+Step 2 of the Model B data build: pairs (+ optional reviewed silver
+translations) -> leak-free train / val / test.
 
-Mirrors Model A's prepare_splits.py pattern:
-  1. Dedup by normalized text key (casefold + strip non-word chars).
-  2. Remove train/val overlap.
-  3. Strip PII patterns (emails, phone numbers, URLs).
-  4. Check for overlap with Model A's own training data.
-  5. Split the held-out pool into val (model selection) and test (report).
-  6. Verify zero leakage between all splits.
+    python -m model_b_generation.prepare_splits_gen \
+        [--pairs data/gen/pairs.parquet] \
+        [--silver data/gen/silver_pairs.parquet --review data/gen/silver_review.jsonl] \
+        [--out_dir data/gen]
 
-Usage:
-    python -m model_b_generation.prepare_splits_gen [--data_dir data]
+Rules
+  * Splits are decided per group_id (hash of the original English sentence),
+    so a sentence, its other responses and all its translations share a split.
+  * The converters put ~10% of groups in "val"; half of those groups (by a
+    second, salted hash) become "test". Test is for the final report only.
+  * Eval rows whose normalised source text also occurs in train are dropped.
+  * Silver rows marked "drop" in the review file are removed, "fix" rows take
+    the reviewer's text.
 """
 
 import argparse
+import hashlib
+import json
 import re
 import sys
 from pathlib import Path
 
 import pandas as pd
-from sklearn.model_selection import train_test_split
 
-SCHEMA_COLUMNS = [
-    "hate_text", "language", "style", "response_text", "source",
-]
+from model_b_generation.converters_gen import PAIR_COLUMNS
 
 _NON_WORD = re.compile(r"[^\w]+", re.UNICODE)
-
-# PII patterns
-_EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
-_PHONE = re.compile(r"\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{4}\b")
+_EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _URL = re.compile(r"https?://\S+|www\.\S+")
-
-
-def dedup_key(series: pd.Series) -> pd.Series:
-    """Loose dedup key: casefold + strip non-word characters."""
-    s = series.astype(str).str.strip().str.casefold()
-    return s.str.replace(_NON_WORD, "", regex=True)
+_PHONE = re.compile(r"(?<!\w)\+?\d[\d\s().-]{8,}\d(?!\w)")
+_HANDLE = re.compile(r"(?<!\w)@\w{2,}")
 
 
 def strip_pii(text: str) -> str:
-    """Replace email, phone, URL patterns with [REDACTED]."""
-    text = _EMAIL.sub("[REDACTED]", text)
-    text = _PHONE.sub("[REDACTED]", text)
-    text = _URL.sub("[REDACTED]", text)
-    return text
+    text = _EMAIL.sub("[EMAIL]", str(text))
+    text = _URL.sub("[URL]", text)
+    text = _PHONE.sub("[PHONE]", text)
+    return _HANDLE.sub("@user", text)
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Prepare clean train/val/test splits for Model B"
-    )
-    parser.add_argument("--data_dir", default="data")
-    parser.add_argument("--test_size", type=float, default=0.5,
-                        help="Fraction of held-out pool reserved for test")
-    parser.add_argument("--seed", type=int, default=42)
-    args = parser.parse_args()
+def norm_key(s: pd.Series) -> pd.Series:
+    return s.astype(str).str.casefold().str.replace(_NON_WORD, "", regex=True)
 
-    data_dir = Path(args.data_dir)
-    train_path = data_dir / "train_gen.csv"
-    val_path = data_dir / "val_gen.csv"
 
-    if not train_path.exists() or not val_path.exists():
-        print("Input files not found. Run build_dataset_gen.py first.")
-        sys.exit(1)
+def is_test_group(gid: str, test_frac: float = 0.5) -> bool:
+    h = hashlib.md5(f"test-salt:{gid}".encode()).hexdigest()
+    return (int(h[:8], 16) % 1000) < test_frac * 1000
 
-    train = pd.read_csv(train_path)
-    pool = pd.read_csv(val_path)
-    print(f"loaded: train={len(train)}  held-out pool={len(pool)}")
 
-    # ── 1. Strip PII ────────────────────────────────────────────────────
-    for df in (train, pool):
-        df["hate_text"] = df["hate_text"].astype(str).apply(strip_pii)
-        df["response_text"] = df["response_text"].astype(str).apply(strip_pii)
-    print("  stripped PII patterns (email/phone/URL)")
+def load_review(path) -> dict:
+    """silver_id -> decision record (last decision wins)."""
+    out = {}
+    p = Path(path) if path else None
+    if p and p.exists():
+        for line in p.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                rec = json.loads(line)
+                out[rec["silver_id"]] = rec
+    return out
 
-    # ── 2. Compute dedup keys ───────────────────────────────────────────
-    for df in (train, pool):
-        df["_key"] = dedup_key(df["hate_text"])
 
-    # ── 3. Drop empty text ──────────────────────────────────────────────
-    for name, df in [("train", train), ("pool", pool)]:
-        bad = df["_key"].str.len() == 0
-        if bad.any():
-            print(f"  dropping {bad.sum()} empty rows from {name}")
-    train = train[train["_key"].str.len() > 0].copy()
-    pool = pool[pool["_key"].str.len() > 0].copy()
+def apply_review(silver: pd.DataFrame, review: dict) -> pd.DataFrame:
+    if not review or "silver_id" not in silver.columns:
+        return silver
+    silver = silver.copy()
+    keep = []
+    for i, sid in enumerate(silver["silver_id"]):
+        rec = review.get(sid)
+        if rec and rec.get("decision") == "drop":
+            keep.append(False)
+            continue
+        if rec and rec.get("decision") == "fix":
+            for col in ("source_text", "target_text"):
+                if rec.get(col):
+                    silver.iloc[i, silver.columns.get_loc(col)] = rec[col]
+        keep.append(True)
+    return silver[keep]
 
-    # ── 4. Dedup within each split ──────────────────────────────────────
-    before = len(train)
-    train = train.drop_duplicates("_key", keep="first")
-    print(f"  dedup train: {before} → {len(train)} (-{before - len(train)})")
 
-    before = len(pool)
-    pool = pool.drop_duplicates("_key", keep="first")
-    print(f"  dedup pool:  {before} → {len(pool)} (-{before - len(pool)})")
+def prepare(pairs: pd.DataFrame, silver: pd.DataFrame | None = None,
+            review: dict | None = None, test_frac: float = 0.5) -> dict[str, pd.DataFrame]:
+    frames = [pairs[PAIR_COLUMNS]]
+    if silver is not None and not silver.empty:
+        frames.append(apply_review(silver, review or {})[PAIR_COLUMNS])
+    df = pd.concat(frames, ignore_index=True)
 
-    # ── 5. Remove train→val leakage ─────────────────────────────────────
-    train_keys = set(train["_key"])
-    leaked = pool["_key"].isin(train_keys)
-    if leaked.any():
-        print(f"  removing {leaked.sum()} leaked eval rows "
-              f"({leaked.mean():.2%} of pool)")
-        pool = pool[~leaked].copy()
+    for col in ("source_text", "target_text"):
+        df[col] = df[col].astype(str).map(strip_pii).str.strip()
+    df = df[(df["source_text"].str.len() > 0) & (df["target_text"].str.len() > 0)]
 
-    # ── 6. Check for overlap with Model A's training data ───────────────
-    model_a_train = data_dir / "train.csv"
-    if model_a_train.exists():
-        ma_df = pd.read_csv(model_a_train)
-        ma_keys = set(dedup_key(ma_df["text"]))
-        overlap_train = train["_key"].isin(ma_keys).sum()
-        overlap_pool = pool["_key"].isin(ma_keys).sum()
-        print(f"  overlap with Model A train: {overlap_train} train, "
-              f"{overlap_pool} pool (informational — not removed, different task)")
-    else:
-        print("  Model A's data/train.csv not found — skipping overlap check")
+    df["_src"] = norm_key(df["source_text"])
+    df["_tgt"] = norm_key(df["target_text"])
+    df = df[(df["_src"].str.len() > 0) & (df["_tgt"].str.len() > 0)]
+    df = df.drop_duplicates(["task", "language", "_src", "_tgt"])
 
-    # ── 7. Split pool into val + test ───────────────────────────────────
-    if len(pool) < 4:
-        print("  WARNING: pool too small for a meaningful val/test split")
-        val, test = pool, pd.DataFrame(columns=pool.columns)
-    else:
-        strata = pool["source"] + "|" + pool["language"]
-        if strata.value_counts().min() < 2:
-            strata = pool["language"]
-        val, test = train_test_split(
-            pool, test_size=args.test_size,
-            random_state=args.seed, stratify=strata,
-        )
+    held_out = df["split"] != "train"
+    df.loc[held_out, "split"] = [
+        "test" if is_test_group(g, test_frac) else "val" for g in df.loc[held_out, "group_id"]
+    ]
 
-    # ── 8. Verify zero leakage ──────────────────────────────────────────
-    val_keys, test_keys = set(val["_key"]), set(test["_key"])
-    assert not (train_keys & val_keys), "leakage train↔val survived"
-    assert not (train_keys & test_keys), "leakage train↔test survived"
-    assert not (val_keys & test_keys), "leakage val↔test survived"
-    print("  verified: zero key overlap between train / val / test")
+    train = df[df["split"] == "train"]
+    train_src = set(train["_src"])
+    splits = {"train": train}
+    for name in ("val", "test"):
+        part = df[df["split"] == name]
+        splits[name] = part[~part["_src"].isin(train_src)]
 
-    # ── 9. Write ────────────────────────────────────────────────────────
-    for name, df in [("train_gen", train), ("val_gen", val), ("test_gen", test)]:
-        out = df[SCHEMA_COLUMNS]
-        out_path = data_dir / f"{name}.csv"
-        out.to_csv(out_path, index=False)
-        print(f"\nwrote {len(out):>6} rows → {out_path}")
-        if len(out) > 0:
-            print(f"  language:  {out['language'].value_counts().to_dict()}")
-            print(f"  source:    {out['source'].value_counts().to_dict()}")
-            print(f"  style:     {out['style'].value_counts().to_dict()}")
+    g = {k: set(v["group_id"]) for k, v in splits.items()}
+    assert not (g["train"] & g["val"]) and not (g["train"] & g["test"]) and not (g["val"] & g["test"]), \
+        "group leakage between splits"
+    return {k: v[PAIR_COLUMNS].reset_index(drop=True) for k, v in splits.items()}
 
+
+def summary(splits: dict[str, pd.DataFrame]) -> dict:
+    return {name: {
+        "rows": int(len(df)),
+        "by_task_language": {f"{t}|{l}": int(n) for (t, l), n in
+                             df.groupby(["task", "language"]).size().items()},
+        "by_source": {k: int(v) for k, v in df["source"].value_counts().items()},
+    } for name, df in splits.items()}
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(description="Leak-free Model B splits")
+    p.add_argument("--pairs", default="data/gen/pairs.parquet")
+    p.add_argument("--silver", default=None, help="silver_pairs.parquet from notebook 03a")
+    p.add_argument("--review", default="data/gen/silver_review.jsonl")
+    p.add_argument("--out_dir", default="data/gen")
+    p.add_argument("--test_frac", type=float, default=0.5, help="share of held-out groups that become test")
+    a = p.parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+    pairs = pd.read_parquet(a.pairs)
+    silver = pd.read_parquet(a.silver) if a.silver else None
+    splits = prepare(pairs, silver, load_review(a.review) if a.silver else {}, a.test_frac)
+
+    out = Path(a.out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    for name, df in splits.items():
+        df.to_parquet(out / f"{name}.parquet", index=False)
+        print(f"wrote {len(df):>7} rows -> {out / (name + '.parquet')}")
+    rep = summary(splits)
+    (out / "SPLITS_REPORT.json").write_text(json.dumps(rep, indent=2), encoding="utf-8")
+    print(json.dumps(rep, indent=1))
     return 0
 
 

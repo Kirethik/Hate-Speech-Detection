@@ -1,187 +1,63 @@
 """
-Evaluation for Model B — counter-narrative generation quality.
+Final Model B report on the TEST split. Run once, after tuning is finished
+(notebook 03, "RUN ONCE" cell). Writes <run_dir>/results/test_report.json
+and results/test_samples.jsonl.
 
-Computes:
-  1. BERTScore (semantic alignment with reference human responses) using
-     bert-base-multilingual-cased as the scorer backbone (not English-only).
-  2. Distinct-2 (lexical diversity across generated outputs).
-  3. BLEU (secondary, logged but not optimized for — rigid n-gram overlap
-     is explicitly the wrong metric for this task per the blueprint).
-
-Results are written to checkpoints_gen/test_metrics_gen.json in the same
-shape as Model A's test_metrics.json so both can be presented side by side.
-
-Usage:
-    python -m model_b_generation.evaluate_gen \\
-        --test_csv data/test_gen.csv \\
-        --checkpoint_dir checkpoints_gen \\
-        --output_path checkpoints_gen/test_metrics_gen.json
+    python -m model_b_generation.evaluate_gen --data_dir /content/gen_data \
+        --run_dir /content/drive/MyDrive/civitas/model_b_v1 [--model_a_ckpt best_model.pt]
 """
 
 import argparse
-import json
-import logging
-import os
 import sys
-from collections import defaultdict
 from pathlib import Path
 
-import pandas as pd
-
-logger = logging.getLogger(__name__)
-
-# Ensure we can import from the package
-_PKG_DIR = str(Path(__file__).resolve().parent)
-if _PKG_DIR not in sys.path:
-    sys.path.insert(0, _PKG_DIR)
+import results_io
+from model_b_generation import gen_metrics
+from model_b_generation.dataset_gen import read_pairs
+from model_b_generation.model_gen import DEFAULT_BASE, load_for_inference
+from model_b_generation.prompts import build_prompt
+from model_b_generation.train_gen import generate, model_a_scorer
 
 
-def distinct_2(texts: list[str]) -> float:
-    """Compute Distinct-2: ratio of unique bigrams to total bigrams."""
-    if not texts:
-        return 0.0
-    unique_bigrams = set()
-    total_bigrams = 0
-    for text in texts:
-        tokens = text.split()
-        for i in range(len(tokens) - 1):
-            bigram = (tokens[i], tokens[i + 1])
-            unique_bigrams.add(bigram)
-            total_bigrams += 1
-    return len(unique_bigrams) / total_bigrams if total_bigrams > 0 else 0.0
+def main(argv=None):
+    p = argparse.ArgumentParser(description="Model B test report (RUN ONCE)")
+    p.add_argument("--data_dir", required=True)
+    p.add_argument("--run_dir", required=True, help="train_gen output_dir (uses run_dir/best)")
+    p.add_argument("--split", default="test", choices=["val", "test"])
+    p.add_argument("--base", default=DEFAULT_BASE)
+    p.add_argument("--model_a_ckpt", default="")
+    p.add_argument("--max_output_length", type=int, default=64)
+    p.add_argument("--batch_size", type=int, default=32)
+    a = p.parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-
-def compute_bleu(candidates: list[str], references: list[str]) -> float:
-    """Compute corpus BLEU using nltk as a fallback-safe approach."""
-    try:
-        from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
-        refs = [[ref.split()] for ref in references]
-        hyps = [cand.split() for cand in candidates]
-        smoothie = SmoothingFunction().method1
-        return corpus_bleu(refs, hyps, smoothing_function=smoothie)
-    except ImportError:
-        logger.warning("nltk not available — BLEU will be 0.0")
-        return 0.0
-    except Exception as e:
-        logger.warning("BLEU computation failed: %s", e)
-        return 0.0
-
-
-def evaluate(
-    test_csv: str,
-    checkpoint_dir: str,
-    output_path: str,
-    device: str = "auto",
-    batch_size: int = 16,
-):
-    """Run evaluation on test_gen.csv and write metrics."""
-    from infer_gen import load_model_for_inference, generate_alternatives
-    from bert_score import score as bert_score_fn
-
-    if device == "auto":
-        import torch
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    df = pd.read_csv(test_csv)
-    logger.info("Loaded %d test examples from %s", len(df), test_csv)
-
-    model, tokenizer = load_model_for_inference(checkpoint_dir, device)
-
-    # Generate counter-narratives for each test example
-    cands_by_lang = defaultdict(list)
-    refs_by_lang = defaultdict(list)
-
-    for idx, row in df.iterrows():
-        hate_text = str(row["hate_text"])
-        lang = str(row.get("language", "en"))
-        ref = str(row["response_text"])
-
-        cands = generate_alternatives(
-            hate_text, lang, n=1, model=model, tokenizer=tokenizer
-        )
-        cand = cands[0] if cands else ""
-
-        cands_by_lang[lang].append(cand)
-        refs_by_lang[lang].append(ref)
-
-        if (idx + 1) % 50 == 0:
-            logger.info("  evaluated %d / %d", idx + 1, len(df))
-
-    # ── Compute metrics per language ──
-    metrics = {"n_evaluated": len(df), "by_language": {}}
-    all_cands, all_refs = [], []
-
-    for lang in sorted(cands_by_lang.keys()):
-        c = cands_by_lang[lang]
-        r = refs_by_lang[lang]
-        all_cands.extend(c)
-        all_refs.extend(r)
-
-        # BERTScore with multilingual model
-        P, R, F1 = bert_score_fn(
-            c, r,
-            model_type="bert-base-multilingual-cased",
-            device=device,
-            verbose=False,
-        )
-
-        d2 = distinct_2(c)
-        bleu = compute_bleu(c, r)
-
-        metrics["by_language"][lang] = {
-            "bertscore_f1": F1.mean().item(),
-            "bertscore_precision": P.mean().item(),
-            "bertscore_recall": R.mean().item(),
-            "distinct_2": d2,
-            "bleu": bleu,
-            "n": len(c),
+    data = Path(a.data_dir)
+    path = next(q for q in (data / f"{a.split}.parquet", data / f"{a.split}.csv") if q.exists())
+    df = read_pairs(path)
+    mb = load_for_inference(str(Path(a.run_dir) / "best"), a.base, merge=True)
+    prompts = [build_prompt(r.task, r.language, r.source_text, r.target) for r in df.itertuples()]
+    outs = generate(mb.model, mb.tokenizer, prompts, mb.device, a.max_output_length, a.batch_size)
+    score_fn, thr = model_a_scorer(a.model_a_ckpt, mb.device)
+    groups = (df["task"] + "|" + df["language"]).tolist()
+    rep = gen_metrics.report(outs, df["target_text"].tolist(), df["source_text"].tolist(),
+                             groups, score_fn, thr)
+    rep.update(split=a.split, n_rows=len(df), adapter=str(Path(a.run_dir) / "best"))
+    if "source" in df.columns:  # silver (machine-translated) references vs human ones
+        is_silver = df["source"].eq("silver_mt").tolist()
+        rep["silver_vs_gold_chrf"] = {
+            "silver": gen_metrics.corpus_chrf([o for o, s in zip(outs, is_silver) if s],
+                                              [r for r, s in zip(df["target_text"], is_silver) if s]),
+            "gold": gen_metrics.corpus_chrf([o for o, s in zip(outs, is_silver) if not s],
+                                            [r for r, s in zip(df["target_text"], is_silver) if not s]),
         }
-        logger.info(
-            "  %s: BERTScore-F1=%.4f  Distinct-2=%.4f  BLEU=%.4f  (n=%d)",
-            lang, F1.mean().item(), d2, bleu, len(c),
-        )
-
-    # ── Aggregate metrics ──
-    if all_cands:
-        P, R, F1 = bert_score_fn(
-            all_cands, all_refs,
-            model_type="bert-base-multilingual-cased",
-            device=device,
-            verbose=False,
-        )
-        metrics["bertscore_f1"] = F1.mean().item()
-        metrics["bertscore_precision"] = P.mean().item()
-        metrics["bertscore_recall"] = R.mean().item()
-        metrics["distinct_2"] = distinct_2(all_cands)
-        metrics["bleu"] = compute_bleu(all_cands, all_refs)
-
-    # ── Write ──
-    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    with open(output_path, "w") as f:
-        json.dump(metrics, f, indent=2)
-
-    print(f"\nMetrics saved to {output_path}")
-    print(json.dumps(metrics, indent=2))
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Evaluate Model B on held-out test set"
-    )
-    parser.add_argument("--test_csv", type=str, default="data/test_gen.csv")
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints_gen")
-    parser.add_argument("--output_path", type=str,
-                        default="checkpoints_gen/test_metrics_gen.json")
-    parser.add_argument("--device", type=str, default="auto",
-                        choices=["auto", "cpu", "cuda"])
-    parser.add_argument("--batch_size", type=int, default=16)
-    args = parser.parse_args()
-
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s  %(levelname)s  %(message)s")
-
-    evaluate(args.test_csv, args.checkpoint_dir, args.output_path,
-             args.device, args.batch_size)
+    name = "test_report.json" if a.split == "test" else "val_report.json"
+    results_io.write_json(a.run_dir, name, rep)
+    results_io.write_jsonl(a.run_dir, f"{a.split}_samples.jsonl", [
+        {"group": g, "prompt": pr, "output": o, "reference": r}
+        for g, pr, o, r in list(zip(groups, prompts, outs, df["target_text"]))[:300]])
+    print({k: rep[k] for k in ("n", "chrf", "bleu", "copy_rate", "safety_rate")})
+    return rep
 
 
 if __name__ == "__main__":

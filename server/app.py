@@ -62,9 +62,8 @@ async def stream_endpoint(ws: WebSocket):
 @app.post("/api/suggest")
 async def suggest_endpoint(req: SuggestRequest):
     from model_b_generation.generate import generate_suggestions
-    mb = _registry.get_model_b() if _registry else None
-    ma = _registry.get_model_a() if _registry else None
-    return generate_suggestions(req.text, req.lang, "unknown", ma, mb)
+    # Phase 4 wires Model A/B from the registry; until then templates only
+    return generate_suggestions(req.text, req.lang, "unknown")
 
 @app.post("/api/feedback")
 async def feedback_endpoint(req: FeedbackRequest):

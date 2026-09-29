@@ -1,69 +1,50 @@
-import pandas as pd
-import hashlib
+"""
+IndicCONAN: Hindi (and English) hate speech / counter-narrative pairs.
+Task = respond.
+
+EXPECTED (verify against your download; see docs/SOURCES.md):
+    data/raw/indic_conan/*.csv
+    a column whose name contains "hate"     -> source_text
+    a column whose name contains "counter"  -> target_text
+    optional language column ("hi"/"en"/"Hindi"/...); default hi
+    optional target column mapped through CONAN_TARGET_MAP (else "unknown")
+"""
+
 import logging
-import traceback
-import requests
-import io
+from pathlib import Path
+
+import pandas as pd
+
+from ._common import CONAN_TARGET_MAP, empty_df, finalize, make_row
 
 logger = logging.getLogger(__name__)
 
-def get_empty_df():
-    return pd.DataFrame(columns=['hate_text', 'language', 'style', 'response_text', 'source', 'split'])
 
-def assign_split(text):
-    if not isinstance(text, str):
-        text = str(text)
-    hash_val = int(hashlib.md5(text.encode('utf-8')).hexdigest(), 16)
-    return 'val' if hash_val % 1000 < 100 else 'train'
+def _lang(v) -> str:
+    s = str(v).strip().lower()
+    return "en" if s.startswith("en") else "hi"
 
-def convert() -> pd.DataFrame:
-    """
-    Loads IndicCONAN dataset from GitHub.
-    It contains Hindi and English pairs.
-    Fails gracefully returning an empty DataFrame if unavailable.
-    """
-    try:
-        url = "https://raw.githubusercontent.com/sahoonihar/IndicCONAN/main/IndicCONAN.csv"
-        resp = requests.get(url, timeout=10)
-        resp.raise_for_status()
-        df = pd.read_csv(io.StringIO(resp.text))
-                
-        if df is None or df.empty:
-            return get_empty_df()
-            
-        col_mapping = {c: c.lower() for c in df.columns}
-        df.rename(columns=col_mapping, inplace=True)
-        
-        hs_col = next((c for c in df.columns if 'hate' in c), None)
-        cn_col = next((c for c in df.columns if 'counter' in c or 'response' in c), None)
-        lang_col = next((c for c in df.columns if 'lang' in c), None)
-        
-        if not hs_col or not cn_col:
-            logger.warning("Could not identify hate_speech or counter_narrative columns in IndicCONAN")
-            return get_empty_df()
-            
-        df = df.rename(columns={hs_col: 'hate_text', cn_col: 'response_text'})
-        
-        if lang_col:
-            df['language'] = df[lang_col].apply(lambda x: 'hi' if 'hi' in str(x).lower() else 'en')
-        else:
-            df['language'] = 'hi'
-            
-        df['style'] = 'empathetic'
-        df['source'] = 'indic_conan'
-        
-        df = df.dropna(subset=['hate_text', 'response_text'])
-        df['split'] = df['hate_text'].apply(assign_split)
-        
-        return df[['hate_text', 'language', 'style', 'response_text', 'source', 'split']]
-        
-    except Exception as e:
-        logger.warning(f"Error processing IndicCONAN (expected if repo is down/missing): {e}")
-        return get_empty_df()
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-    res = convert()
-    print(f"Shape: {res.shape}")
-    if not res.empty:
-        print(res.head())
+def convert(raw_dir: str = "data/raw") -> pd.DataFrame:
+    files = sorted((Path(raw_dir) / "indic_conan").glob("*.csv"))
+    if not files:
+        logger.warning("IndicCONAN not found under %s/indic_conan", raw_dir)
+        return empty_df()
+    rows = []
+    for f in files:
+        df = pd.read_csv(f)
+        low = {c.lower(): c for c in df.columns}
+        hs = next((low[c] for c in low if "hate" in c), None)
+        cn = next((low[c] for c in low if "counter" in c), None)
+        if not hs or not cn:
+            logger.warning("IndicCONAN %s: no hate/counter columns in %s", f.name, list(df.columns))
+            continue
+        lang_col = next((low[c] for c in low if c in ("language", "lang")), None)
+        tgt_col = next((low[c] for c in low if c == "target"), None)
+        for i in range(len(df)):
+            lang = _lang(df[lang_col].iloc[i]) if lang_col else "hi"
+            tgt = (CONAN_TARGET_MAP.get(str(df[tgt_col].iloc[i]).strip().upper(), "unknown")
+                   if tgt_col else "unknown")
+            rows.append(make_row("respond", df[hs].iloc[i], df[cn].iloc[i], lang,
+                                 "indic_conan", tgt))
+    return finalize(rows)

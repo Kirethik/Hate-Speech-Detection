@@ -1,84 +1,76 @@
 """
-Qian et al. Gab & Reddit counter-speech dataset converter.
+Qian et al. (2019) "A Benchmark Dataset for Learning to Intervene in Online
+Hate Speech": Reddit and Gab conversations with human-written interventions.
+English. Task = respond.
 
-Paper: "Benchmark Dataset for Automatic Detection of Online Misogyny" → actually
-this is the dataset from:
-  Qian et al. (2019) "Benchmark Dataset for Automatic Counter-Narrative Generation"
-  GitHub: https://github.com/ziqizhang/iac_counter_speech
+EXPECTED (verify against your download; see docs/SOURCES.md):
+    data/raw/qian_counter/reddit.csv, data/raw/qian_counter/gab.csv
+    text            numbered posts, one per line: "1. first post\n2. reply ..."
+    hate_speech_idx list of post numbers that are hateful, e.g. "[1, 3]" (or "n/a")
+    response        list of intervention strings, e.g. "['reply 1', 'reply 2']"
 
-Expected layout:
-    data/raw/qian_counter/
-        gab_dataset_sample_67K.csv    (columns: hate_speech, counter_speech, ...)
-        reddit_dataset_sample_52K.csv
-
-Maps to the alternate-speech unified schema:
-    {task, source_text, target_text, language, source, split}
-task = "respond"  (these are counter-narratives, not rewrites)
+Each (hateful post, intervention) becomes one pair.
 """
 
-import hashlib
+import ast
+import logging
+import re
 from pathlib import Path
 
 import pandas as pd
 
+from ._common import empty_df, finalize, group_id, make_row
 
-def _hash_split(text: str, val_frac: float = 0.10) -> str:
-    digest = hashlib.md5(str(text).encode("utf-8")).hexdigest()
-    return "val" if (int(digest[:8], 16) % 1000) < val_frac * 1000 else "train"
+logger = logging.getLogger(__name__)
+
+_POST = re.compile(r"^\s*(\d+)\.\s*(.*)$")
 
 
-def _load_qian_file(path: Path, source_name: str) -> list[dict]:
-    rows = []
-    if not path.exists():
-        return rows
+def _posts(text: str) -> dict[int, str]:
+    out = {}
+    for line in str(text).splitlines():
+        m = _POST.match(line)
+        if m:
+            out[int(m.group(1))] = m.group(2).strip()
+    return out
+
+
+def _as_list(v) -> list:
+    if isinstance(v, list):
+        return v
     try:
-        df = pd.read_csv(path, on_bad_lines="skip", engine="python")
-    except Exception:
-        return rows
+        parsed = ast.literal_eval(str(v))
+        return parsed if isinstance(parsed, list) else [parsed]
+    except (ValueError, SyntaxError):
+        return []
 
-    # Find hate and counter columns
-    col = {c.lower().strip(): c for c in df.columns}
-    hate_col = next((col[k] for k in ("hate_speech", "hatespeech", "hate", "post") if k in col), None)
-    counter_col = next((col[k] for k in ("counter_speech", "counter", "response", "reply") if k in col), None)
 
-    if hate_col is None or counter_col is None:
-        print(f"  [qian] WARNING: could not identify columns in {path.name}. "
-              f"Columns: {list(df.columns)}")
-        return rows
-
-    for _, r in df.dropna(subset=[hate_col, counter_col]).iterrows():
-        src = str(r[hate_col]).strip()
-        tgt = str(r[counter_col]).strip()
-        if not src or not tgt:
-            continue
-        rows.append({
-            "task": "respond",
-            "source_text": src,
-            "target_text": tgt,
-            "language": "en",
-            "source": source_name,
-            "split": _hash_split(src),
-        })
+def _pairs(df: pd.DataFrame, source: str) -> list:
+    need = {"text", "hate_speech_idx", "response"}
+    if not need <= set(df.columns):
+        logger.warning("qian %s: expected columns %s, got %s", source, need, list(df.columns))
+        return []
+    rows = []
+    for text, idx, resp in zip(df["text"], df["hate_speech_idx"], df["response"]):
+        posts = _posts(text)
+        responses = [r for r in _as_list(resp) if isinstance(r, str) and r.strip()]
+        for i in _as_list(idx):
+            post = posts.get(int(i)) if str(i).isdigit() else None
+            if not post:
+                continue
+            gid = group_id(post)
+            rows += [make_row("respond", post, r, "en", source, gid=gid) for r in responses]
     return rows
 
 
 def convert(raw_dir: str = "data/raw") -> pd.DataFrame:
     root = Path(raw_dir) / "qian_counter"
-    all_rows = []
-
-    for filename, src_name in [
-        ("gab_dataset_sample_67K.csv", "qian_gab"),
-        ("reddit_dataset_sample_52K.csv", "qian_reddit"),
-    ]:
-        all_rows.extend(_load_qian_file(root / filename, src_name))
-
-    if not all_rows:
-        return pd.DataFrame(columns=["task", "source_text", "target_text", "language", "source", "split"])
-    return pd.DataFrame(all_rows)
-
-
-if __name__ == "__main__":
-    df = convert()
-    print(f"Qian counter-speech: {df.shape}")
-    if not df.empty:
-        print(df["source"].value_counts())
+    rows = []
+    for name in ("reddit", "gab"):
+        path = root / f"{name}.csv"
+        if path.exists():
+            rows += _pairs(pd.read_csv(path), f"qian_{name}")
+    if not rows:
+        logger.warning("Qian counter-speech not found under %s", root)
+        return empty_df()
+    return finalize(rows)

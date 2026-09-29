@@ -1,79 +1,57 @@
-import pandas as pd
-import hashlib
+"""
+CONAN (Chung et al. 2019): multilingual Islamophobia hate speech /
+counter-narrative pairs. English rows only. Task = respond, target = religion.
+
+EXPECTED (verify against your download; see docs/SOURCES.md):
+    data/raw/conan/CONAN.csv  (or CONAN.json as a list of records)
+    a hate-speech column   : one of hateSpeech | HATE_SPEECH | hate_speech
+    a counter column       : one of counterSpeech | COUNTER_NARRATIVE | counter_narrative
+    optional language column: cn_id prefix "EN"/"FR"/"IT" or a LANGUAGE column
+"""
+
 import logging
-import traceback
-from datasets import load_dataset
-import requests
-import io
+from pathlib import Path
+
+import pandas as pd
+
+from ._common import empty_df, finalize, make_row
 
 logger = logging.getLogger(__name__)
 
-def get_empty_df():
-    return pd.DataFrame(columns=['hate_text', 'language', 'style', 'response_text', 'source', 'split'])
+_HATE_COLS = ("hatespeech", "hate_speech")
+_CN_COLS = ("counterspeech", "counter_narrative", "counternarrative")
 
-def assign_split(text):
-    if not isinstance(text, str):
-        text = str(text)
-    hash_val = int(hashlib.md5(text.encode('utf-8')).hexdigest(), 16)
-    return 'val' if hash_val % 1000 < 100 else 'train'
 
-def convert() -> pd.DataFrame:
-    """
-    Loads the CONAN dataset from HuggingFace or fallback GitHub CSV.
-    Filters to English subset only.
-    Maps columns: HATE_SPEECH -> hate_text, COUNTER_NARRATIVE -> response_text
-    Sets language='en', style='empathetic', source='conan'.
-    Returns an empty DataFrame if loading fails.
-    """
-    df = None
-    try:
-        try:
-            ds = load_dataset('LanguageTreatmentFoundation/CONAN', split='train')
-            df = ds.to_pandas()
-        except Exception as e:
-            logger.warning(f"Failed to load LanguageTreatmentFoundation/CONAN: {e}")
-            try:
-                ds = load_dataset('marcoguerini/CONAN', split='train')
-                df = ds.to_pandas()
-            except Exception as e2:
-                logger.warning(f"Failed to load marcoguerini/CONAN: {e2}")
-                url = "https://raw.githubusercontent.com/marcoguerini/CONAN/master/CONAN/CONAN.csv"
-                resp = requests.get(url, timeout=10)
-                resp.raise_for_status()
-                df = pd.read_csv(io.StringIO(resp.text))
-                
-        if df is None or df.empty:
-            return get_empty_df()
+def _pick(df, names):
+    low = {c.lower(): c for c in df.columns}
+    return next((low[n] for n in names if n in low), None)
 
-        col_mapping = {c: c.upper() for c in df.columns}
-        df.rename(columns=col_mapping, inplace=True)
-        
-        if 'HATE_SPEECH' not in df.columns or 'COUNTER_NARRATIVE' not in df.columns:
-            logger.warning("Required columns missing in CONAN")
-            return get_empty_df()
-            
-        df = df.rename(columns={'HATE_SPEECH': 'hate_text', 'COUNTER_NARRATIVE': 'response_text'})
-        
-        if 'LANGUAGE' in df.columns:
-            df = df[df['LANGUAGE'].str.lower().str.startswith('en')]
-            
-        df['language'] = 'en'
-        df['style'] = 'empathetic'
-        df['source'] = 'conan'
-        
-        df = df.dropna(subset=['hate_text', 'response_text'])
-        df['split'] = df['hate_text'].apply(assign_split)
-        
-        return df[['hate_text', 'language', 'style', 'response_text', 'source', 'split']]
-        
-    except Exception as e:
-        logger.error(f"Error processing CONAN: {e}")
-        logger.debug(traceback.format_exc())
-        return get_empty_df()
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-    res = convert()
-    print(f"Shape: {res.shape}")
-    if not res.empty:
-        print(res.head())
+def _load(raw_dir: str) -> pd.DataFrame | None:
+    root = Path(raw_dir) / "conan"
+    if (root / "CONAN.csv").exists():
+        return pd.read_csv(root / "CONAN.csv")
+    if (root / "CONAN.json").exists():
+        import json
+        data = json.loads((root / "CONAN.json").read_text(encoding="utf-8"))
+        return pd.DataFrame(data.get("conan", data) if isinstance(data, dict) else data)
+    logger.warning("CONAN not found under %s", root)
+    return None
+
+
+def convert(raw_dir: str = "data/raw") -> pd.DataFrame:
+    df = _load(raw_dir)
+    if df is None or df.empty:
+        return empty_df()
+    hs, cn = _pick(df, _HATE_COLS), _pick(df, _CN_COLS)
+    if not hs or not cn:
+        logger.warning("CONAN: expected hate/counter columns, got %s", list(df.columns))
+        return empty_df()
+    lang_col = _pick(df, ("language", "lang"))
+    id_col = _pick(df, ("cn_id",))
+    if lang_col:
+        df = df[df[lang_col].astype(str).str.lower().str.startswith("en")]
+    elif id_col:
+        df = df[df[id_col].astype(str).str.upper().str.startswith("EN")]
+    return finalize(make_row("respond", h, c, "en", "conan", "religion")
+                    for h, c in zip(df[hs], df[cn]))

@@ -1,77 +1,71 @@
 """
-Model B — QLoRA-wrapped mT5-small loader.
+Model B = bigscience/mt0-base + a LoRA adapter (no bitsandbytes / 4-bit).
 
-Two entry points:
-  - load_model_for_training(): loads the base model in 4-bit NF4
-    (frozen) and applies LoRA adapters for parameter-efficient fine-tuning.
-  - load_model_for_inference(): loads the base model plus a saved LoRA
-    adapter checkpoint for generation.
-
-QLoRA config (Section 5 of the blueprint):
-  - Base: google/mt5-small (~300M params) in 4-bit NormalFloat
-  - LoRA: r=8, alpha=32, target_modules=['q', 'v'], dropout=0.05
-  - Only the adapter weights are trained; the base is frozen
+mT5-family weights overflow in fp16, so training runs in fp32 on T4 and
+bf16 on Ampere+ (L4/A100). Inference on the RTX 3050 uses bf16 when the GPU
+supports it, else fp32 (mt0-base is ~580M params -> ~2.3 GB fp32, ~1.2 GB bf16).
 """
 
 import os
+from dataclasses import dataclass
+from pathlib import Path
+
 import torch
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, BitsAndBytesConfig
-from peft import LoraConfig, get_peft_model, PeftModel, TaskType
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
-def load_model_for_training(model_name="google/mt5-small", lora_r=8, resume_checkpoint=None):
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    
-    device_map = "auto" if torch.cuda.is_available() else None
-    
-    if torch.cuda.is_available():
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16
-        )
-        model = AutoModelForSeq2SeqLM.from_pretrained(
-            model_name,
-            quantization_config=bnb_config,
-            device_map=device_map
-        )
-    else:
-        model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-        
-    if resume_checkpoint and os.path.exists(resume_checkpoint):
-        print(f"Resuming training from checkpoint: {resume_checkpoint}")
-        model = PeftModel.from_pretrained(model, resume_checkpoint, is_trainable=True)
-    else:
-        lora_config = LoraConfig(
-            r=lora_r,
-            lora_alpha=32,
-            target_modules=['q', 'v'],
-            lora_dropout=0.05,
-            task_type=TaskType.SEQ_2_SEQ_LM
-        )
-        model = get_peft_model(model, lora_config)
-        
-    model.print_trainable_parameters()
-    
-    return model, tokenizer
+DEFAULT_BASE = "bigscience/mt0-base"
+# attention + feed-forward projections of the T5/mT5 blocks
+LORA_TARGETS = ["q", "k", "v", "o", "wi_0", "wi_1", "wo"]
 
-def load_model_for_inference(checkpoint_dir, model_name="google/mt5-small"):
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    
-    device_map = "auto" if torch.cuda.is_available() else None
-    
-    if torch.cuda.is_available():
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16
-        )
-        base_model = AutoModelForSeq2SeqLM.from_pretrained(
-            model_name,
-            quantization_config=bnb_config,
-            device_map=device_map
-        )
+
+def load_for_training(base: str = DEFAULT_BASE, lora_r: int = 16, lora_alpha: int = 32,
+                      lora_dropout: float = 0.05, adapter_dir: str | None = None):
+    from peft import LoraConfig, PeftModel, TaskType, get_peft_model
+    tok = AutoTokenizer.from_pretrained(base)
+    model = AutoModelForSeq2SeqLM.from_pretrained(base)
+    if adapter_dir and (Path(adapter_dir) / "adapter_config.json").exists():
+        model = PeftModel.from_pretrained(model, adapter_dir, is_trainable=True)
     else:
-        base_model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-        
-    model = PeftModel.from_pretrained(base_model, checkpoint_dir)
-    return model, tokenizer
+        model = get_peft_model(model, LoraConfig(
+            r=lora_r, lora_alpha=lora_alpha, lora_dropout=lora_dropout,
+            target_modules=LORA_TARGETS, task_type=TaskType.SEQ_2_SEQ_LM))
+    return model, tok
+
+
+@dataclass
+class ModelB:
+    model: torch.nn.Module
+    tokenizer: object
+    device: torch.device
+    base: str
+    adapter_dir: str | None
+
+
+def inference_dtype(device: torch.device) -> torch.dtype:
+    if device.type == "cuda" and torch.cuda.is_bf16_supported():
+        return torch.bfloat16
+    return torch.float32
+
+
+def load_for_inference(adapter_dir: str | None, base: str = DEFAULT_BASE,
+                       device: str | torch.device = "auto", merge: bool = True) -> ModelB:
+    """
+    Base + adapter, merged into plain weights for faster generation.
+    With no adapter the bare mt0-base is returned (zero-shot; poor quality,
+    only good for smoke tests) and adapter_dir is None.
+    """
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+    if device == "auto":
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device(device)
+    has_adapter = bool(adapter_dir) and (Path(adapter_dir) / "adapter_config.json").exists()
+    tok_src = adapter_dir if has_adapter and (Path(adapter_dir) / "tokenizer_config.json").exists() else base
+    tok = AutoTokenizer.from_pretrained(tok_src)
+    model = AutoModelForSeq2SeqLM.from_pretrained(base)
+    if has_adapter:
+        from peft import PeftModel
+        model = PeftModel.from_pretrained(model, adapter_dir)
+        if merge:
+            model = model.merge_and_unload()
+    model.to(device=device, dtype=inference_dtype(device)).eval()
+    return ModelB(model, tok, device, base, adapter_dir if has_adapter else None)

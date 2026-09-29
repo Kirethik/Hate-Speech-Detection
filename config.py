@@ -23,6 +23,7 @@ NLI_CALIBRATION_PATH = os.getenv("NLI_CALIBRATION_PATH", "artifacts/model_a/nli_
 
 # Model B: LoRA adapter directory + the base model it was trained on
 MODEL_B_CKPT_DIR = os.getenv("MODEL_B_CKPT_DIR", "artifacts/model_b")
+MODEL_B_ADAPTER_DIR = os.getenv("MODEL_B_ADAPTER_DIR", f"{MODEL_B_CKPT_DIR}/adapter")
 MODEL_B_BASE = os.getenv("MODEL_B_BASE", "bigscience/mt0-base")
 
 # --------------------------------------------------------------------------- #
