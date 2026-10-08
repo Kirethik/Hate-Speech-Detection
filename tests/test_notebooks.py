@@ -32,7 +32,7 @@ def test_every_notebook_writes_a_results_zip():
     b = _load("build_notebooks")
     for cells in b.NOTEBOOKS.values():
         src = "".join("".join(c["source"]) for c in cells)
-        assert "civitas_results_" in src and "results_io" in src
+        assert "_trained.zip" in src and "results_io" in src and "civitas_results_" not in src
 
 
 def test_bundle_has_code_data_and_notebook(tmp_path, monkeypatch):

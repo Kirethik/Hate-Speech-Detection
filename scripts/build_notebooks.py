@@ -8,7 +8,8 @@ Two self-contained notebooks, one per bundle made by scripts/make_bundles.py:
     notebooks/train_model_a.ipynb  (inside civitas_model_a/)
     notebooks/train_model_b.ipynb  (inside civitas_model_b/)
 Each finds its bundle folder on Google Drive, trains with resume-after-disconnect,
-and writes runs/<run>/results/ + civitas_results_<run>.zip next to the bundle.
+and ends by writing ONE file, runs/civitas_model_{a,b}_trained.zip (weights + results),
+which `python scripts/install_models.py` drops straight into the project.
 """
 
 import json
@@ -101,9 +102,10 @@ hateful (rationale). Languages: en, hi, ta, te, ml, kn, Roman Urdu.
    Allow Drive access when asked.
 4. If Colab disconnects: reconnect and **Run all** again. Training resumes from the last save
    (at most ~500 steps are repeated).
-5. When it finishes, download **`civitas_model_a/runs/model_a/civitas_results_model_a.zip`** and
-   **`best_model.pt`** from the same folder. Give both to Claude (put them in `artifacts/` on your PC:
-   the zip in `artifacts/`, the .pt at `artifacts/model_a/best_model.pt`).
+5. When it finishes, download the one file **`civitas_model_a/runs/civitas_model_a_trained.zip`**
+   (trained weights + all results) into your Civitas project folder and run
+   `python scripts/install_models.py --check`. Do not unzip it by hand; the script puts
+   every file where the app expects it.
 6. Do **not** tick CONFIRM in the last cell ("RUN ONCE") until Claude says tuning is finished.
 
 Rough time on a free T4: 40–60 min per epoch; 4 epochs with early stopping ≈ 3–4 h,
@@ -154,7 +156,7 @@ print(ARGS)
     md('''
 ## Results (saved to files)
 Scores the best checkpoint on **val** (never test), runs the robustness probe, then writes
-`runs/model_a/results/` and `runs/model_a/civitas_results_model_a.zip`.
+`runs/model_a/results/` and the single file to download: `runs/civitas_model_a_trained.zip`.
 '''),
     code('''
 m = json.load(open(f"{OUT}/best_metrics.json"))
@@ -165,8 +167,8 @@ for s in ("hate_by_language", "hate_by_source"):
     print(s, {k: (round(v["macro_f1"], 3) if v else None) for k, v in m.get(s, {}).items()})
 !cd {WORK} && python -c "import pandas as pd; pd.read_parquet('{DATA}/val.parquet').to_csv('/content/val.csv', index=False)"
 !cd {WORK} && python -m eval.probe_model --checkpoint {OUT}/best_model.pt --eval_csv /content/val.csv --out {OUT}/robustness.json
-!cd {WORK} && python -m results_io --run_dir {OUT} --kind model_a --data_manifest {DATA}/manifest.json --zip {OUT}/civitas_results_model_a.zip
-print("download:", f"{OUT}/civitas_results_model_a.zip", "and", f"{OUT}/best_model.pt")
+!cd {WORK} && python -m results_io --run_dir {OUT} --kind model_a --data_manifest {DATA}/manifest.json --zip {RUNS}/civitas_model_a_trained.zip
+print("DOWNLOAD THIS ONE FILE:", f"{RUNS}/civitas_model_a_trained.zip")
 '''),
     md('''
 ---
@@ -179,8 +181,8 @@ CONFIRM = False  #@param {type:"boolean"}
 assert CONFIRM, "Tick CONFIRM only when tuning is finished (see the note above)."
 !cd {WORK} && python train.py --eval_only --split test --data_dir {DATA} --output_dir {OUT} --batch_size {BATCH}
 !cd {WORK} && python -m eval.eval_hatecheck --checkpoint {OUT}/best_model.pt --out {OUT}/hatecheck.json
-!cd {WORK} && python -m results_io --run_dir {OUT} --kind model_a --data_manifest {DATA}/manifest.json --zip {OUT}/civitas_results_model_a.zip
-print("download again:", f"{OUT}/civitas_results_model_a.zip")
+!cd {WORK} && python -m results_io --run_dir {OUT} --kind model_a --data_manifest {DATA}/manifest.json --zip {RUNS}/civitas_model_a_trained.zip
+print("DOWNLOAD AGAIN (now includes the test report):", f"{RUNS}/civitas_model_a_trained.zip")
 '''),
 ]
 
@@ -208,9 +210,9 @@ learns every language. If that step fails, training still runs on English + Hind
 4. Open `civitas_model_b/train_model_b.ipynb` with Colab → **Runtime → T4 GPU → Run all**.
    About 30–60 min of translation, then 1.5–3 h of training. Re-run after a disconnect:
    finished languages and training steps are skipped.
-5. Download from `civitas_model_b/runs/model_b/`: **`civitas_results_model_b.zip`** and
-   **`model_b_adapter.zip`**, and give both to Claude (zip → `artifacts/`, adapter unzipped
-   → `artifacts/model_b/adapter/`).
+5. When it finishes, download the one file **`civitas_model_b/runs/civitas_model_b_trained.zip`**
+   (LoRA adapter + all results) into your Civitas project folder and run
+   `python scripts/install_models.py --check`.
 6. Do **not** tick CONFIRM in the last cell until Claude says tuning is finished.
 '''),
     code('''
@@ -313,8 +315,8 @@ print(ARGS)
 '''),
     md('''
 ## Results (saved to files)
-Writes `runs/model_b/civitas_results_model_b.zip` (metrics, history, sample generations,
-silver stats) and `runs/model_b/model_b_adapter.zip`.
+Writes the single file to download: `runs/civitas_model_b_trained.zip` (adapter, metrics,
+history, sample generations, silver stats).
 '''),
     code('''
 import results_io
@@ -329,9 +331,8 @@ m = json.load(open(f"{OUT}/results/metrics.json"))
 print({k: m.get(k) for k in ("chrf", "copy_rate", "safety_rate", "val_loss", "selection_score", "global_step")})
 for g, v in m.get("by_group", {}).items():
     print(f"  {g:<22} chrF {v['chrf']:>5}  copy {v['copy_rate']:.2f}  safety {v['safety_rate']}")
-!cd {WORK} && python -m results_io --run_dir {OUT} --zip {OUT}/civitas_results_model_b.zip
-shutil.make_archive(f"{OUT}/model_b_adapter", "zip", f"{OUT}/best")
-print("download:", f"{OUT}/civitas_results_model_b.zip", "and", f"{OUT}/model_b_adapter.zip")
+!cd {WORK} && python -m results_io --run_dir {OUT} --kind model_b --zip {RUNS}/civitas_model_b_trained.zip
+print("DOWNLOAD THIS ONE FILE:", f"{RUNS}/civitas_model_b_trained.zip")
 '''),
     md('''
 ---
@@ -342,8 +343,8 @@ Only after Claude confirms tuning is finished. Scores the **test** split once.
 CONFIRM = False  #@param {type:"boolean"}
 assert CONFIRM, "Tick CONFIRM only when tuning is finished."
 !cd {WORK} && python -m model_b_generation.evaluate_gen --data_dir {GEN} --run_dir {OUT} --model_a_ckpt "{MODEL_A}"
-!cd {WORK} && python -m results_io --run_dir {OUT} --zip {OUT}/civitas_results_model_b.zip
-print("download again:", f"{OUT}/civitas_results_model_b.zip")
+!cd {WORK} && python -m results_io --run_dir {OUT} --kind model_b --zip {RUNS}/civitas_model_b_trained.zip
+print("DOWNLOAD AGAIN (now includes the test report):", f"{RUNS}/civitas_model_b_trained.zip")
 '''),
 ]
 

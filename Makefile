@@ -1,4 +1,4 @@
-.PHONY: install dev-api dev-web test eval data gen-data bundles notebooks ingest
+.PHONY: install dev-api dev-web test eval data gen-data bundles notebooks install-models
 
 API_HOST ?= 127.0.0.1
 API_PORT ?= 8000
@@ -36,7 +36,7 @@ bundles: notebooks
 notebooks:
 	python scripts/build_notebooks.py
 
-# unpack artifacts/civitas_results_*.zip from Colab and print a summary
-ingest:
-	python scripts/ingest_results.py
+# install civitas_model_{a,b}_trained.zip from Colab (project folder, artifacts/ or Downloads)
+install-models:
+	python scripts/install_models.py --check
 

@@ -84,6 +84,20 @@ def test_train_resume_and_eval_only(tmp_path, tiny_encoder):
     report = json.loads((out / "test_report.json").read_text())
     assert "hate_macro_f1" in report and "hate_by_script" in report
 
+    # the single file Colab hands back installs and scores like the original
+    import zipfile
+    import results_io
+    from infer import load_model, score_batch
+    z = results_io.package_trained("model_a", out, tmp_path / "civitas_model_a_trained.zip")
+    zipfile.ZipFile(z).extractall(tmp_path / "project")
+    small = load_model(str(tmp_path / "project/artifacts/model_a/best_model.pt"), "cpu")
+    full = load_model(str(out / "best_model.pt"), "cpu")
+    texts = ["these people are vermin", "have a lovely day"]
+    p_small = [r["hate_prob"] for r in score_batch(small, texts)]
+    p_full = [r["hate_prob"] for r in score_batch(full, texts)]
+    assert p_small == pytest.approx(p_full, abs=1e-2)
+    assert small.threshold == full.threshold
+
 
 def test_rationale_survives_normalisation(tiny_encoder):
     """Offsets are mapped through normalize_code_mixed instead of dropping the row."""

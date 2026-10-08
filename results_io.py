@@ -169,21 +169,96 @@ def collect_model_a(run_dir, data_manifest=None, repo_dir=".") -> Path:
     return out
 
 
+# --------------------------------------------------------------------------- #
+# The one file a Colab run hands back: civitas_model_{a,b}_trained.zip
+# --------------------------------------------------------------------------- #
+# Paths inside the zip are relative to the repo root, so "extract here" in the
+# project folder (or scripts/install_models.py) puts every file where config.py
+# already looks for it:
+#   model_a: artifacts/model_a/best_model.pt          (config.MODEL_A_PT_PATH)
+#   model_b: artifacts/model_b/adapter/...            (config.MODEL_B_ADAPTER_DIR)
+#   both:    artifacts/results/<kind>/results/...     metrics, history, config, env
+#            artifacts/<kind>/MODEL_INFO.json         what is inside + headline metrics
+TRAINED_ZIP = {"model_a": "civitas_model_a_trained.zip", "model_b": "civitas_model_b_trained.zip"}
+_HEADLINE = {
+    "model_a": ("threshold", "hate_macro_f1", "hate_roc_auc", "severity_macro_f1",
+                "target_macro_f1", "rationale_token_f1"),
+    "model_b": ("chrf", "copy_rate", "safety_rate", "selection_score", "val_loss"),
+}
+
+
+def _half_checkpoint(src: Path, dst: Path) -> None:
+    """best_model.pt with fp16 weights (half the download; infer.load_model upcasts)."""
+    import torch
+    ckpt = torch.load(src, map_location="cpu", weights_only=False)
+    for k in [k for k in ckpt if k not in ("model_state_dict", "threshold", "args", "target_classes",
+                                            "severity_classes", "normalization_version",
+                                            "val_metrics", "epoch", "global_step")]:
+        ckpt.pop(k)  # optimizer / scheduler state is only needed for resuming
+    ckpt["model_state_dict"] = {k: (v.half() if v.is_floating_point() else v)
+                                for k, v in ckpt["model_state_dict"].items()}
+    ckpt["stored_dtype"] = "float16"
+    torch.save(ckpt, dst)
+
+
+def package_trained(kind: str, run_dir, zip_path=None) -> Path:
+    import tempfile
+    run_dir = Path(run_dir)
+    res = results_dir(run_dir)
+    zip_path = Path(zip_path or run_dir / TRAINED_ZIP[kind])
+    metrics = json.loads((res / "metrics.json").read_text(encoding="utf-8")) \
+        if (res / "metrics.json").exists() else {}
+    info = {"kind": kind, "packaged_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "run_dir": str(run_dir), "has_test_report": (res / "test_report.json").exists(),
+            "headline_val_metrics": {k: metrics.get(k) for k in _HEADLINE[kind]}}
+    cfg = res / "config.json"
+    if cfg.exists():
+        info["git_commit"] = json.loads(cfg.read_text(encoding="utf-8")).get("git_commit")
+
+    with tempfile.TemporaryDirectory() as tmp, \
+            zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+        if kind == "model_a":
+            best = run_dir / "best_model.pt"
+            if not best.exists():
+                raise FileNotFoundError(f"{best} not found - has training finished an eval?")
+            small = Path(tmp) / "best_model.pt"
+            _half_checkpoint(best, small)
+            z.write(small, "artifacts/model_a/best_model.pt", compress_type=zipfile.ZIP_STORED)
+            info["files"] = ["artifacts/model_a/best_model.pt"]
+        else:
+            best = run_dir / "best"
+            if not (best / "adapter_config.json").exists():
+                raise FileNotFoundError(f"{best}/adapter_config.json not found - has training finished an eval?")
+            info["files"] = []
+            for f in sorted(best.rglob("*")):
+                if f.is_file():
+                    arc = f"artifacts/model_b/adapter/{f.relative_to(best).as_posix()}"
+                    z.write(f, arc)
+                    info["files"].append(arc)
+            info["base_model"] = json.loads((best / "adapter_config.json").read_text()).get(
+                "base_model_name_or_path")
+        for f in sorted(res.rglob("*")):
+            if f.is_file():
+                z.write(f, f"artifacts/results/{kind}/results/{f.relative_to(res).as_posix()}")
+        z.writestr(f"artifacts/{kind}/MODEL_INFO.json", json.dumps(info, indent=2))
+    return zip_path
+
+
 def main(argv=None):
     import argparse
-    p = argparse.ArgumentParser(description="Collect a run's results/ folder and zip it")
+    p = argparse.ArgumentParser(description="Collect a run's results/ and build the trained-model zip")
     p.add_argument("--run_dir", required=True)
-    p.add_argument("--kind", choices=["model_a", "none"], default="none",
-                   help="model_a: first gather train.py's files into results/")
+    p.add_argument("--kind", choices=["model_a", "model_b"], required=True)
     p.add_argument("--data_manifest", default=None)
-    p.add_argument("--zip", required=True, help="where to write civitas_results_<run>.zip")
+    p.add_argument("--zip", default=None, help=f"default: <run_dir>/{TRAINED_ZIP['model_a']} (or _b)")
     a = p.parse_args(argv)
     if a.kind == "model_a":
         collect_model_a(a.run_dir, a.data_manifest)
     missing = missing_files(results_dir(a.run_dir))
     if missing:
         print("WARNING: results/ is missing", missing)
-    print("wrote", zip_results(a.run_dir, a.zip))
+    out = package_trained(a.kind, a.run_dir, a.zip)
+    print(f"wrote {out}  ({out.stat().st_size / 1e6:.1f} MB)")
 
 
 if __name__ == "__main__":

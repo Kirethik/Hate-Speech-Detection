@@ -35,11 +35,26 @@ Reconnect, then **Run all** again. Training always passes `--resume` and continu
 save on Drive; Model B's translation step skips languages that are already done.
 To start a fresh run instead, change `RUN_NAME` in the config cell.
 
-## What comes back: files, not pasted output
+## What comes back: one file per model
 
-Each run writes `runs/<run>/results/` and zips it (checkpoints are never inside the zip):
+Each notebook ends by writing a single file next to its bundle on Drive:
 
-| File in `results/` | What it holds |
+| Model | Download this | Contains |
+|---|---|---|
+| A | `civitas_model_a/runs/civitas_model_a_trained.zip` | `best_model.pt` (fp16, ~0.55 GB) + all results |
+| B | `civitas_model_b/runs/civitas_model_b_trained.zip` | LoRA adapter + tokenizer + all results |
+
+Put the file(s) in the project folder (or leave them in Downloads) and run:
+
+```
+python scripts/install_models.py --check      # or: make install-models
+```
+
+Every path inside the zips starts with `artifacts/`, so the installer drops them exactly where
+the app looks (`artifacts/model_a/best_model.pt`, `artifacts/model_b/adapter/`) and prints a
+summary. Results land in `artifacts/results/<model>/results/`:
+
+| File | What it holds |
 |---|---|
 | `metrics.json` | the best checkpoint's val metrics (overall + per language / task) |
 | `metrics_history.jsonl` | one line per evaluation during training |
@@ -47,13 +62,7 @@ Each run writes `runs/<run>/results/` and zips it (checkpoints are never inside 
 | `env.json` | GPU, library versions, wall time |
 | `samples.jsonl`, `silver_report.json` | Model B only: example generations, translation stats |
 | `robustness.json` | Model A only: identity-swap and obfuscation probe on val |
-| `test_report.json`, `hatecheck_report.json` | only after the RUN ONCE cell |
-
-Download into `artifacts/` on the PC:
-- Model A: `civitas_results_model_a.zip`, and `best_model.pt` → `artifacts/model_a/best_model.pt`
-- Model B: `civitas_results_model_b.zip`, and `model_b_adapter.zip` unzipped → `artifacts/model_b/adapter/`
-
-Then `make ingest` (or just tell Claude the files are there).
+| `test_report.json`, `hatecheck_report.json` | only after the RUN ONCE cell (download the zip again) |
 
 ## Rules that keep the numbers honest
 
