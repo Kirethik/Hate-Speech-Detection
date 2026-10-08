@@ -58,6 +58,7 @@ from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import DataLoader, Dataset, RandomSampler, WeightedRandomSampler
 from transformers import XLMRobertaTokenizerFast, get_linear_schedule_with_warmup
 
+import devices
 from dataset import _parse_spans
 from identity_augment import expand_with_identity_augmentation
 from label_maps import SEVERITY_CLASSES, TARGET_CLASSES
@@ -85,27 +86,24 @@ def setup_logging(log_path: Path, append: bool = False):
 
 
 def pick_amp(device: torch.device, disable: bool):
-    """(autocast dtype or None, use GradScaler)."""
-    if disable or device.type != "cuda":
-        return None, False
-    major, _ = torch.cuda.get_device_capability(device)
-    if major >= 8:          # Ampere or newer: native bf16
-        return torch.bfloat16, False
-    return torch.float16, True
+    """(autocast dtype or None, use GradScaler). See devices.amp_dtype."""
+    return devices.amp_dtype(device, disable)
+
+
+_AMP_DEVICE = {"type": "cuda"}
 
 
 def amp_context(amp_dtype):
     """autocast when AMP is on, a no-op otherwise (keeps CPU runs working)."""
     if amp_dtype is None:
         return contextlib.nullcontext()
-    return torch.autocast("cuda", dtype=amp_dtype)
+    return torch.autocast(_AMP_DEVICE["type"], dtype=amp_dtype)
 
 
 def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    devices.manual_seed_all(seed)
 
 
 def atomic_save(obj, path: Path):
@@ -412,7 +410,8 @@ def eval_only(args) -> int:
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     setup_logging(out_dir / f"eval_{args.split}.log")
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = devices.best_device()
+    _AMP_DEVICE["type"] = device.type
     amp_dtype, _ = pick_amp(device, args.no_amp)
 
     ckpt_path = Path(args.checkpoint or out_dir / "best_model.pt")
@@ -537,7 +536,8 @@ def main(argv=None):
     setup_logging(out_dir / "train.log", append=resuming)
     set_seed(args.seed)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = devices.best_device()
+    _AMP_DEVICE["type"] = device.type
     amp_dtype, use_scaler = pick_amp(device, args.no_amp)
     num_workers = 0 if os.name == "nt" else args.num_workers
     log.info(f"device={device} amp={amp_dtype} scaler={use_scaler} resume={resuming}")
@@ -600,7 +600,7 @@ def main(argv=None):
     total_steps = max(1, steps_per_epoch * args.epochs)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     scheduler = get_linear_schedule_with_warmup(optimizer, int(total_steps * args.warmup_ratio), total_steps)
-    scaler = torch.amp.GradScaler("cuda", enabled=use_scaler)
+    scaler = torch.amp.GradScaler(device.type if use_scaler else "cpu", enabled=use_scaler)
     eval_every = max(1, batches_per_epoch // args.evals_per_epoch)
     log.info(f"{batches_per_epoch} batches/epoch, {total_steps} optimiser steps total, "
              f"eval every {eval_every} batches")

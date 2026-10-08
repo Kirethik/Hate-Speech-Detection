@@ -1,9 +1,9 @@
 """
 Model B = bigscience/mt0-base + a LoRA adapter (no bitsandbytes / 4-bit).
 
-mT5-family weights overflow in fp16, so training runs in fp32 on T4 and
-bf16 on Ampere+ (L4/A100). Inference on the RTX 3050 uses bf16 when the GPU
-supports it, else fp32 (mt0-base is ~580M params -> ~2.3 GB fp32, ~1.2 GB bf16).
+mT5-family weights overflow in fp16, so training runs in fp32 on T4/CPU and
+bf16 on Ampere+ and Intel Arc (XPU). Inference uses bf16 where supported, else
+fp32 (mt0-base is ~580M params -> ~2.3 GB fp32, ~1.2 GB bf16).
 """
 
 import os
@@ -12,6 +12,8 @@ from pathlib import Path
 
 import torch
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+
+import devices
 
 DEFAULT_BASE = "bigscience/mt0-base"
 # attention + feed-forward projections of the T5/mT5 blocks
@@ -42,9 +44,7 @@ class ModelB:
 
 
 def inference_dtype(device: torch.device) -> torch.dtype:
-    if device.type == "cuda" and torch.cuda.is_bf16_supported():
-        return torch.bfloat16
-    return torch.float32
+    return torch.bfloat16 if devices.supports_bf16(device) else torch.float32
 
 
 def load_for_inference(adapter_dir: str | None, base: str = DEFAULT_BASE,
@@ -55,9 +55,7 @@ def load_for_inference(adapter_dir: str | None, base: str = DEFAULT_BASE,
     only good for smoke tests) and adapter_dir is None.
     """
     os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
-    if device == "auto":
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    device = torch.device(device)
+    device = devices.resolve(device)
     has_adapter = bool(adapter_dir) and (Path(adapter_dir) / "adapter_config.json").exists()
     tok_src = adapter_dir if has_adapter and (Path(adapter_dir) / "tokenizer_config.json").exists() else base
     tok = AutoTokenizer.from_pretrained(tok_src)

@@ -14,7 +14,8 @@ Checkpoint selection uses val only:
     score = chrF x (1 - copy_rate) x safety_rate   (safety_rate = 1 without Model A)
 Test is scored separately, once, by evaluate_gen.py.
 
-Precision: fp32 on T4 (mT5 overflows in fp16), bf16 autocast on L4/A100.
+Precision: fp32 on T4 / CPU (mT5 overflows in fp16), bf16 autocast on
+L4/A100 and on Intel Arc (XPU). Device choice: devices.best_device().
 """
 
 import argparse
@@ -29,6 +30,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
+import devices
 import results_io
 from model_b_generation import gen_metrics
 from model_b_generation.dataset_gen import GenDataset, make_collate, read_pairs, sampling_weights
@@ -69,11 +71,9 @@ def parse_args(argv=None):
 
 
 def pick_dtype(precision: str, device: torch.device):
-    if precision == "bf16" or (precision == "auto" and device.type == "cuda"
-                               and torch.cuda.is_bf16_supported()
-                               and torch.cuda.get_device_capability(0)[0] >= 8):
+    if precision == "bf16" or (precision == "auto" and devices.supports_bf16(device)):
         return torch.bfloat16
-    return None  # fp32
+    return None  # fp32 (T4 / CPU: mT5 overflows in fp16)
 
 
 def stratified_rows(df, n: int, seed: int):
@@ -135,7 +135,7 @@ def main(argv=None):
     out = Path(a.output_dir)
     out.mkdir(parents=True, exist_ok=True)
     random.seed(a.seed); np.random.seed(a.seed); torch.manual_seed(a.seed)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = devices.best_device()
     amp_dtype = pick_dtype(a.precision, device)
     print(f"device={device} precision={'bf16' if amp_dtype else 'fp32'}")
 

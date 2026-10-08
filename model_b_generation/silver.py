@@ -72,15 +72,16 @@ def make_silver_rows(english: pd.DataFrame, language: str, src_translations: lis
 class IndicTrans2:
     """Colab-only wrapper (needs a GPU, `IndicTransToolkit` and HF access to the model)."""
 
-    def __init__(self, model_name: str = INDICTRANS_MODEL, device: str = "cuda"):
+    def __init__(self, model_name: str = INDICTRANS_MODEL, device: str = "auto"):
         import torch
         from IndicTransToolkit.processor import IndicProcessor
         from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
         self.torch = torch
-        self.device = device
+        import devices
+        self.device = devices.resolve(device)
         self.tok = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         self.model = AutoModelForSeq2SeqLM.from_pretrained(
-            model_name, trust_remote_code=True, torch_dtype=torch.float16).to(device).eval()
+            model_name, trust_remote_code=True, torch_dtype=devices.half_dtype(self.device)).to(self.device).eval()
         self.ip = IndicProcessor(inference=True)
 
     def translate(self, texts: list[str], tgt: str, batch_size: int = 64,

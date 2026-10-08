@@ -30,6 +30,7 @@ from dataclasses import dataclass
 import torch
 from transformers import XLMRobertaTokenizerFast
 
+import devices
 from dehumanization import explain as explain_dehumanization
 from dehumanization import is_dehumanizing_claim
 from label_maps import SEVERITY_CLASSES, TARGET_CLASSES
@@ -82,9 +83,9 @@ def load_model(checkpoint_path: str, device, half: bool | None = None) -> ModelA
                             num_severity_classes=len(severity_classes))
     model.load_state_dict(ckpt["model_state_dict"])
     if half is None:
-        half = device.type == "cuda"
+        half = device.type in ("cuda", "xpu")
     if half:
-        model.half()
+        model.to(devices.half_dtype(device))
     model.to(device).eval()
     return ModelA(model, tokenizer, float(ckpt["threshold"]), list(target_classes),
                   list(severity_classes), device,
@@ -218,12 +219,12 @@ def main():
     ap.add_argument("--text", default=None, help="score a single string and exit")
     ap.add_argument("--nli", action="store_true",
                     help="enable the NLI second stage (downloads mDeBERTa on first use)")
-    ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"],
+    ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "xpu"],
                     help="use cpu when a training run owns the GPU")
     args = ap.parse_args()
 
     device = torch.device(
-        ("cuda" if torch.cuda.is_available() else "cpu") if args.device == "auto" else args.device)
+        devices.resolve(args.device))
     m = load_model(args.checkpoint, device)
 
     nli = None

@@ -99,10 +99,8 @@ def env_info(started_at: float | None = None) -> dict:
         import torch
         info["torch"] = torch.__version__
         info["cuda"] = torch.version.cuda
-        if torch.cuda.is_available():
-            info["gpu"] = torch.cuda.get_device_name(0)
-            info["gpu_mem_gb"] = round(torch.cuda.get_device_properties(0).total_memory / 1e9, 1)
-            info["peak_mem_gb"] = round(torch.cuda.max_memory_allocated() / 1e9, 2)
+        import devices
+        info.update(devices.describe())
     except ImportError:
         pass
     for lib in ("transformers", "peft"):

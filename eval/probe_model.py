@@ -31,6 +31,7 @@ import numpy as np
 import pandas as pd
 import torch
 
+import devices
 from infer import load_model, score_batch
 
 # Crafted English cases. Kept to English because the point is to assert what the
@@ -93,7 +94,7 @@ def main():
     ap.add_argument("--n_per_language", type=int, default=200)
     args = ap.parse_args()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = devices.best_device()
     m = load_model(args.checkpoint, device)
     threshold = m.threshold
     print(f"loaded {args.checkpoint}  (decision threshold {threshold:.2f}, fitted on val)\n")

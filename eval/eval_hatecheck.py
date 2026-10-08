@@ -34,6 +34,7 @@ import torch
 from huggingface_hub import hf_hub_download
 from transformers import XLMRobertaTokenizerFast
 
+import devices
 from infer import load_model, score_batch
 
 REPO, FILENAME = "Paul/hatecheck", "test.csv"
@@ -53,13 +54,13 @@ def main():
     ap.add_argument("--checkpoint", default="artifacts/model_a/best_model.pt")
     ap.add_argument("--compare", default=None,
                     help="second checkpoint to diff against (e.g. the baseline)")
-    ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"],
+    ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "xpu"],
                     help="use cpu when a training run owns the GPU")
     ap.add_argument("--out", default="artifacts/model_a/hatecheck.json")
     args = ap.parse_args()
 
     device = torch.device(
-        ("cuda" if torch.cuda.is_available() else "cpu") if args.device == "auto"
+        devices.resolve("auto") if args.device == "auto"
         else args.device
     )
 

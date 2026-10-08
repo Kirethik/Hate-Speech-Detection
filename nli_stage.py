@@ -32,6 +32,8 @@ slice — do not assume the multilingual label means uniform quality.
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
+import devices
+
 DEFAULT_NLI_MODEL = "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli"
 
 # Hypotheses are phrased about "a group of people" rather than naming groups, so
@@ -49,7 +51,7 @@ class NLIStage:
     """Zero-shot entailment scorer over the dehumanisation hypotheses."""
 
     def __init__(self, model_name: str = DEFAULT_NLI_MODEL, device=None):
-        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device or devices.best_device()
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name).to(self.device)
         self.model.eval()
