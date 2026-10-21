@@ -1,0 +1,77 @@
+.mic-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  flex: 1;
+}
+
+.mic-status {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-muted);
+}
+
+.mic-status.recording {
+  color: var(--color-brick);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+.mic-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-6);
+  border-radius: 50px;
+  border: none;
+  font-size: var(--text-base);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  transition: all var(--duration-fast) ease;
+}
+
+.mic-btn.start {
+  background: var(--color-ink);
+  color: var(--color-surface);
+}
+
+.mic-btn.start:hover:not(:disabled) {
+  background: var(--color-focus);
+}
+
+.mic-btn.stop {
+  background: var(--color-brick-bg);
+  color: var(--color-brick);
+  border: 1px solid var(--color-brick);
+}
+
+.mic-btn.stop:hover {
+  background: var(--color-brick);
+  color: var(--color-surface);
+}
+
+.stop-icon {
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  border-radius: 2px;
+}
+
+.mic-hint {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  text-align: center;
+  max-width: 250px;
+  margin-top: var(--space-2);
+}

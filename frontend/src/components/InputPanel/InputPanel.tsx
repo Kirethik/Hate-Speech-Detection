@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import './InputPanel.css';
+import './InputPanel-mic.css';
 
 interface InputPanelProps {
   onAnalyzeText: (text: string, langHint: string) => void;
@@ -18,10 +19,50 @@ const LANGUAGES = [
 ];
 
 export default function InputPanel({ onAnalyzeText, onAnalyzeAudio, loading }: InputPanelProps) {
-  const [mode, setMode] = useState<'text' | 'upload'>('text');
+  const [mode, setMode] = useState<'text' | 'upload' | 'mic'>('mic');
   const [text, setText] = useState('');
-  const [lang, setLang] = useState('auto');
+  const [lang, setLang] = useState('en'); // Default to English for mic testing
   const [file, setFile] = useState<File | null>(null);
+  
+  // Mic state
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorder = useRef<MediaRecorder | null>(null);
+  const audioChunks = useRef<Blob[]>([]);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      mediaRecorder.current = recorder;
+      audioChunks.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunks.current.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
+        const audioFile = new File([audioBlob], 'live-recording.webm', { type: 'audio/webm' });
+        const langHint = lang === 'auto' ? '' : lang;
+        onAnalyzeAudio(audioFile, langHint);
+        // Stop all tracks to release mic
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      alert("Microphone access denied or unavailable.");
+      console.error(err);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder.current && isRecording) {
+      mediaRecorder.current.stop();
+      setIsRecording(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,6 +79,10 @@ export default function InputPanel({ onAnalyzeText, onAnalyzeAudio, loading }: I
   return (
     <div className="input-panel">
       <div className="mode-tabs">
+        <button 
+          className={mode === 'mic' ? 'active' : ''} 
+          onClick={() => setMode('mic')}
+        >Live Mic</button>
         <button 
           className={mode === 'text' ? 'active' : ''} 
           onClick={() => setMode('text')}
@@ -62,7 +107,30 @@ export default function InputPanel({ onAnalyzeText, onAnalyzeAudio, loading }: I
           </select>
         </div>
 
-        {mode === 'text' ? (
+        {mode === 'mic' && (
+          <div className="field-group flex-fill mic-container">
+            <div className={`mic-status ${isRecording ? 'recording' : ''}`}>
+              {isRecording ? 'Listening...' : 'Ready to record'}
+            </div>
+            {isRecording ? (
+              <button type="button" className="mic-btn stop" onClick={stopRecording}>
+                <div className="stop-icon"></div>
+                Stop & Analyze
+              </button>
+            ) : (
+              <button type="button" className="mic-btn start" onClick={startRecording} disabled={loading}>
+                <div className="mic-icon">🎤</div>
+                Start Recording
+              </button>
+            )}
+            <p className="mic-hint">
+              Record yourself speaking (e.g. saying a foul sentence). 
+              The system will detect it and generate a safe alternative.
+            </p>
+          </div>
+        )}
+
+        {mode === 'text' && (
           <div className="field-group flex-fill">
             <label htmlFor="text-input" className="sr-only">Input text</label>
             <textarea
@@ -75,7 +143,9 @@ export default function InputPanel({ onAnalyzeText, onAnalyzeAudio, loading }: I
               autoFocus
             />
           </div>
-        ) : (
+        )}
+        
+        {mode === 'upload' && (
           <div className="field-group flex-fill file-drop">
             <input 
               type="file" 
@@ -90,13 +160,15 @@ export default function InputPanel({ onAnalyzeText, onAnalyzeAudio, loading }: I
           </div>
         )}
 
-        <button 
-          type="submit" 
-          className="submit-btn" 
-          disabled={loading || (mode === 'text' && !text.trim()) || (mode === 'upload' && !file)}
-        >
-          {loading ? 'Analyzing...' : 'Analyze'}
-        </button>
+        {mode !== 'mic' && (
+          <button 
+            type="submit" 
+            className="submit-btn" 
+            disabled={loading || (mode === 'text' && !text.trim()) || (mode === 'upload' && !file)}
+          >
+            {loading ? 'Analyzing...' : 'Analyze'}
+          </button>
+        )}
       </form>
     </div>
   );

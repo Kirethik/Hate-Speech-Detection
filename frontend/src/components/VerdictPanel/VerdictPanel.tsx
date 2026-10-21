@@ -7,6 +7,11 @@ interface Props {
   loading: boolean;
 }
 
+const TARGETS: Record<string, string> = {
+  religion: 'Religion', gender: 'Gender', caste_ethnicity: 'Caste / ethnicity', disability: 'Disability',
+  political: 'Political', nationality_migrant: 'Nationality / migrants', other: 'Other',
+};
+
 export default function VerdictPanel({ result, loading }: Props) {
   if (loading || !result) {
     return <div className="verdict-panel empty"></div>;
@@ -30,7 +35,7 @@ export default function VerdictPanel({ result, loading }: Props) {
       <div className={`verdict-header ${severityClass}`}>
         <h2 className="verdict-title">{severityDisplay}</h2>
         <div className="confidence">
-          {(detection.hate_prob * 100).toFixed(0)}% confidence
+          {(detection.hate_prob * 100).toFixed(0)}% classifier score
         </div>
       </div>
 
@@ -39,9 +44,22 @@ export default function VerdictPanel({ result, loading }: Props) {
         <div className="info-block">
           <h3>Target Group</h3>
           <p className="target-value">
-            {detection.target.label !== 'none' ? detection.target.label : 'None detected'}
+            {detection.target.label !== 'none' ? (TARGETS[detection.target.label] ?? detection.target.label) : 'None detected'}
           </p>
         </div>
+
+        {detection.reason && (
+          <div className="info-block">
+            <h3>Why</h3>
+            <p>{detection.reason}</p>
+          </div>
+        )}
+
+        {detection.warning && !detection.is_demo_mode && (
+          <div className="info-block nli-block" role="note">
+            <p>{detection.warning}</p>
+          </div>
+        )}
 
         {detection.second_stage.nli_ran && (
           <div className="info-block nli-block">
@@ -76,9 +94,9 @@ export default function VerdictPanel({ result, loading }: Props) {
 
             <div className="detail-table">
               <h4>Timing</h4>
-              <div className="detail-row"><span>Model A (ONNX):</span> <span>{timing_ms.model_a}ms</span></div>
+              <div className="detail-row"><span>Classifiers:</span> <span>{timing_ms.model_a}ms</span></div>
               {timing_ms.nli && <div className="detail-row"><span>NLI Stage:</span> <span>{timing_ms.nli}ms</span></div>}
-              {timing_ms.model_b && <div className="detail-row"><span>Model B:</span> <span>{timing_ms.model_b}ms</span></div>}
+              {timing_ms.model_b && <div className="detail-row"><span>LLM judge:</span> <span>{timing_ms.model_b}ms</span></div>}
             </div>
           </div>
         </details>

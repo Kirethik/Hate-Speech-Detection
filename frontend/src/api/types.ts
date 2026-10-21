@@ -3,8 +3,8 @@ export interface RationaleSpan {
   end_char: number;
   text: string;
   score: number;
-  audio_start: number | null;
-  audio_end: number | null;
+  audio_start?: number | null;
+  audio_end?: number | null;
 }
 
 export interface SeverityResult {
@@ -31,18 +31,25 @@ export interface DetectionResult {
   rationale: RationaleSpan[];
   second_stage: SecondStageResult;
   decision_path: string;
+  is_demo_mode?: boolean;
+  warning?: string | null;
+  reason?: string;
 }
 
 export interface Suggestion {
   text: string;
   language: string;
-  safety_check_hate_prob: number;
+  tone?: string;
+  safety_check_hate_prob?: number | null;
+  is_template?: boolean;
+  is_masked?: boolean;
 }
 
 export interface Suggestions {
   rewrite: Suggestion[];
   respond: Suggestion[];
   fallback: boolean;
+  safety_status?: string;
 }
 
 export interface InputInfo {
@@ -61,9 +68,60 @@ export interface TimingMs {
 }
 
 export interface AnalysisResult {
-  analysis_id: string;
+  analysis_id?: string;
   input: InputInfo;
   detection: DetectionResult;
   suggestions: Suggestions;
   timing_ms: TimingMs;
+  system_status?: Record<string, ModelStatus>;
+}
+
+export interface ModelStatus {
+  name: string;
+  model_type: string;
+  is_installed: boolean;
+  weights_path: string;
+  device: string;
+  is_demo_mode: boolean;
+  status_message: string;
+}
+
+export interface RewriteResult {
+  original_text: string;
+  requested_tone: string;
+  language: string;
+  rewrites: Suggestion[];
+  responses: Suggestion[];
+  safety_status: string;
+  model_identifier: string;
+  is_demo_mode: boolean;
+  warning?: string | null;
+}
+
+export interface AnalyticsData {
+  total_analyses: number;
+  hateful_detected: number;
+  clean_detected: number;
+  hate_ratio: number;
+  language_distribution: Record<string, number>;
+  total_feedback_submissions: number;
+}
+
+export interface FeedbackSubmission {
+  analysis_id: string;
+  correct_label?: boolean;
+  bad_suggestion?: string;
+  note?: string;
+  rating?: string;
+  accepted_rewrite?: string;
+}
+
+export interface HistoryItem {
+  id: string;
+  text: string;
+  language: string;
+  verdict: string;
+  hate_prob: number;
+  created_at: string;
+  result?: AnalysisResult;
 }

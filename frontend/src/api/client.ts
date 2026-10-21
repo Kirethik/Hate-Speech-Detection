@@ -1,88 +1,83 @@
-import { AnalysisResult } from './types';
+import {
+  AnalysisResult, RewriteResult, AnalyticsData, FeedbackSubmission, ModelStatus, HistoryItem
+} from './types';
 
-// Mock mode fixture (matches canonical JSON exactly)
-const MOCK_RESPONSE: AnalysisResult = {
-  analysis_id: 'mock-123',
-  input: {
-    mode: 'text',
-    text: 'You people are a plague on this country.',
-    language: 'en',
-    script: 'latin',
-    asr_confidence: null,
-  },
-  detection: {
-    hate_prob: 0.87,
-    is_hate: true,
-    severity: {
-      label: 'hate',
-      probs: { normal: 0.05, offensive_profanity: 0.08, hate: 0.87 },
-    },
-    target: { label: 'other', probs: {} },
-    rationale: [
-      {
-        start_char: 17,
-        end_char: 23,
-        text: 'plague',
-        score: 0.92,
-        audio_start: null,
-        audio_end: null,
-      },
-    ],
-    second_stage: {
-      nli_ran: true,
-      nli_score: 0.89,
-      dehumanization_hits: ['plague'],
-    },
-    decision_path: 'base+nli+lexicon',
-  },
-  suggestions: {
-    rewrite: [
-      { text: 'I strongly disagree with your impact on this country.', language: 'en', safety_check_hate_prob: 0.02 },
-    ],
-    respond: [
-      { text: 'It is important to remember that people are not diseases. We should discuss issues without resorting to dehumanizing language.', language: 'en', safety_check_hate_prob: 0.01 },
-    ],
-    fallback: false,
-  },
-  timing_ms: { asr: null, model_a: 45, nli: 120, model_b: 450 },
-};
+// Same-origin by default: Vite proxies /api in development; one domain serves both in production.
+// Set VITE_API_URL only when the API lives on a different host.
+const API_BASE: string = (import.meta as any).env?.VITE_API_URL ?? '';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
-const IS_MOCK = import.meta.env.VITE_MOCK === '1';
+async function call<T>(path: string, init?: RequestInit): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, init);
+  } catch {
+    throw new Error('Cannot reach the Civitas server. Start the API (scripts\\run_dev.ps1) and try again.');
+  }
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`;
+    try {
+      const j = await res.json();
+      if (j?.detail) msg = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail);
+    } catch { /* not json */ }
+    throw new Error(msg);
+  }
+  return res.json() as Promise<T>;
+}
+
+const json = (body: unknown): RequestInit => ({
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
 
 export const apiClient = {
-  analyzeText: async (text: string, langHint?: string): Promise<AnalysisResult> => {
-    if (IS_MOCK) {
-      await new Promise(r => setTimeout(r, 800)); // simulate latency
-      return { ...MOCK_RESPONSE, input: { ...MOCK_RESPONSE.input, text, language: langHint || 'en' } };
-    }
+  analyzeText: (text: string, langHint?: string, tone?: string): Promise<AnalysisResult> =>
+    call('/api/analyze/text', json({ text, lang_hint: langHint, tone: tone || 'calm' })),
 
-    const res = await fetch(`${API_BASE}/api/analyze/text`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, lang_hint: langHint }),
-    });
-
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+  analyzeAudio: (file: File, langHint?: string, tone?: string): Promise<AnalysisResult> => {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (langHint) fd.append('lang_hint', langHint);
+    if (tone) fd.append('tone', tone);
+    return call('/api/analyze/audio', { method: 'POST', body: fd });
   },
 
-  analyzeAudio: async (file: File, langHint?: string): Promise<AnalysisResult> => {
-    if (IS_MOCK) {
-      await new Promise(r => setTimeout(r, 1500));
-      return { ...MOCK_RESPONSE, input: { ...MOCK_RESPONSE.input, mode: 'audio' } };
-    }
+  rewriteText: (text: string, tone = 'calm', language?: string, target?: string): Promise<RewriteResult> =>
+    call('/api/rewrite', json({ text, tone, language, target })),
 
-    const formData = new FormData();
-    formData.append('file', file);
-    if (langHint) formData.append('lang_hint', langHint);
+  submitFeedback: (feedback: FeedbackSubmission): Promise<{ feedback_id: string }> =>
+    call('/api/feedback', json(feedback)),
 
-    const res = await fetch(`${API_BASE}/api/analyze/audio`, {
-      method: 'POST',
-      body: formData,
-    });
+  fetchAnalytics: (): Promise<AnalyticsData> => call('/api/analytics'),
 
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
-  }
+  fetchModelStatus: (): Promise<Record<string, ModelStatus>> => call('/api/model-status'),
+
+  fetchHistory: (limit = 20): Promise<HistoryItem[]> => call(`/api/history?limit=${limit}`),
+
+  fetchEvaluation: (): Promise<EvalReport | null> =>
+    call<EvalReport>('/api/v1/eval').catch(() => null),
 };
+
+export interface EvalMetrics {
+  n: number;
+  accuracy: number;
+  macro_f1: number;
+  precision: number;
+  recall: number;
+  fpr: number;
+  tp: number; fp: number; tn: number; fn: number;
+}
+
+export interface EvalReport {
+  created_at: string;
+  split: string;
+  per_language_limit: number;
+  threshold: number;
+  with_llm: boolean;
+  llm_model?: string | null;
+  classifiers: string[];
+  overall: EvalMetrics;
+  per_language: Record<string, EvalMetrics>;
+  rewrite?: { n: number; safe_rate: number; avg_hate_prob: number } | null;
+  seconds: number;
+}
