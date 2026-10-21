@@ -1,0 +1,9 @@
+# .venv-tts-chatterbox  (Python 3.11). torch 2.6.0 first (XPU or CPU build), then:
+chatterbox-tts
+# resemble-perth (Chatterbox's watermarker) imports pkg_resources, removed in setuptools 81+
+setuptools<81
+fastapi
+uvicorn
+python-multipart
+soundfile
+python-dotenv

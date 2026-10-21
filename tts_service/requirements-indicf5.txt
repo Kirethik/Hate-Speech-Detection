@@ -1,0 +1,12 @@
+# .venv-tts-indicf5  (Python 3.11). torch first (XPU or CPU build), then:
+git+https://github.com/ai4bharat/IndicF5.git
+# IndicF5's remote model code breaks on transformers 5.x (models are built on the meta device)
+transformers>=4.46,<4.50
+# f5_tts pins numpy<=1.26.4; pyarrow >= 20 needs numpy 2, and datasets >= 4 needs pyarrow >= 21
+datasets>=3.0,<4
+pyarrow>=15,<20
+fastapi
+uvicorn
+python-multipart
+soundfile
+python-dotenv
