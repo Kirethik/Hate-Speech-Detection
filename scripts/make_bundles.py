@@ -45,11 +45,11 @@ README = {
 Everything needed to train Model A in Google Colab: the code (`code/`), the prepared
 train/val/test data (`data/`) and the notebook.
 
-1. Upload this whole `civitas_model_a` folder to **My Drive** (keep the folder name).
-2. Open `train_model_a.ipynb` from Drive with **Google Colab**.
-3. Runtime -> Change runtime type -> **T4 GPU**, then **Runtime -> Run all**.
+1. In Colab: File -> Upload notebook -> `train_model_a.ipynb` (no need to unzip anything).
+2. Runtime -> Change runtime type -> **T4 GPU**, then **Runtime -> Run all**. Allow Drive access.
+3. When "Choose files" appears, pick `civitas_model_a.zip`.
 4. Disconnected? Reconnect and Run all again: training resumes.
-5. Download `runs/model_a/civitas_results_model_a.zip` and `runs/model_a/best_model.pt`.
+5. Download My Drive -> `civitas_runs/civitas_model_a/civitas_model_a_trained.zip`.
 
 Data: {summary}
 """,
@@ -59,11 +59,11 @@ Everything needed to train Model B in Google Colab: the code (`code/`), the Engl
 Rewrite + Respond pairs (`data/`) and the notebook. The notebook adds Tamil, Telugu,
 Malayalam, Hindi and Roman-Urdu "silver" translations itself (IndicTrans2) before training.
 
-1. Upload this whole `civitas_model_b` folder to **My Drive** (keep the folder name).
+1. In Colab: File -> Upload notebook -> `train_model_b.ipynb` (no need to unzip anything).
 2. Optional: add a Hugging Face read token as Colab secret `HF_TOKEN` (for IndicTrans2).
-3. Open `train_model_b.ipynb` from Drive with **Google Colab**.
-4. Runtime -> Change runtime type -> **T4 GPU**, then **Runtime -> Run all**.
-5. Download `runs/model_b/civitas_results_model_b.zip` and `runs/model_b/model_b_adapter.zip`.
+3. Runtime -> Change runtime type -> **T4 GPU**, then **Runtime -> Run all**. Allow Drive access.
+4. When "Choose files" appears, pick `civitas_model_b.zip`.
+5. Download My Drive -> `civitas_runs/civitas_model_b/civitas_model_b_trained.zip`.
 
 Data: {summary}
 """,

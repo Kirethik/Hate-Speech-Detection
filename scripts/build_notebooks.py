@@ -38,27 +38,47 @@ def write(name, cells):
 
 def setup(bundle):
     return code(f'''
-# Find the bundle on Google Drive, copy code + data to the fast local disk.
-# Checkpoints and results go to <bundle>/runs/ on Drive, so they survive a disconnect.
-from google.colab import drive
-drive.mount("/content/drive")
+# Get the bundle (code + data). Works with ANY of these - no folder upload needed:
+#   a) {bundle}.zip uploaded to My Drive (any name like "{bundle} (1).zip" is fine)
+#   b) {bundle}.zip dragged into Colab's Files panel (left sidebar)
+#   c) nothing uploaded yet: a "Choose files" button appears below - pick the zip
+# Checkpoints and the final model file are saved to My Drive/civitas_runs/{bundle}/
 import glob, hashlib, json, os, shutil, sys, zipfile
 NAME = "{bundle}"
-ROOTS = ["/content/drive/MyDrive", "/content/drive/MyDrive/civitas"]
+try:
+    from google.colab import drive
+    drive.mount("/content/drive")
+    MYDRIVE = "/content/drive/MyDrive"
+except Exception as e:
+    MYDRIVE = None
+    print("WARNING: Google Drive not mounted - progress is LOST if Colab disconnects.", e)
 
-def find_bundle():
-    for r in ROOTS:
-        for c in sorted(glob.glob(f"{{r}}/{{NAME}}*/code")) + sorted(glob.glob(f"{{r}}/{{NAME}}*/{{NAME}}/code")):
-            return os.path.dirname(c)
-    for r in ROOTS:  # only the zip was uploaded: unpack it next to itself
-        z = f"{{r}}/{{NAME}}.zip"
-        if os.path.exists(z):
-            zipfile.ZipFile(z).extractall(r)
-            return f"{{r}}/{{NAME}}"
-    raise FileNotFoundError(f"Upload the {{NAME}} folder (or {{NAME}}.zip) to My Drive, then re-run.")
+def find_zip():
+    places = ["/content"] + ([MYDRIVE, f"{{MYDRIVE}}/civitas", f"{{MYDRIVE}}/*"] if MYDRIVE else [])
+    for d in places:
+        hits = sorted(glob.glob(f"{{d}}/{{NAME}}*.zip"), key=os.path.getmtime, reverse=True)
+        if hits:
+            return hits[0]
+    for d in ([MYDRIVE, f"{{MYDRIVE}}/civitas", f"{{MYDRIVE}}/*"] if MYDRIVE else []):
+        for c in glob.glob(f"{{d}}/{{NAME}}*/code") + glob.glob(f"{{d}}/{{NAME}}*/{{NAME}}/code"):
+            return os.path.dirname(c)          # an unzipped folder on Drive also works
+    from google.colab import files
+    print(f"Pick {{NAME}}.zip from your computer:")
+    up = files.upload()
+    z = next((f for f in up if f.startswith(NAME) and f.endswith(".zip")), None)
+    assert z, f"That was not {{NAME}}.zip - run this cell again and pick the right file."
+    return f"/content/{{z}}"
 
-BUNDLE = find_bundle()
-WORK, DATA, RUNS = "/content/work", "/content/data", f"{{BUNDLE}}/runs"
+src = find_zip()
+BUNDLE = "/content/bundle"
+if os.path.isdir(src):
+    shutil.copytree(src, f"{{BUNDLE}}/{{NAME}}", dirs_exist_ok=True)
+else:
+    print("unzipping", src)
+    zipfile.ZipFile(src).extractall(BUNDLE)
+BUNDLE = f"{{BUNDLE}}/{{NAME}}"
+WORK, DATA = "/content/work", "/content/data"
+RUNS = f"{{MYDRIVE}}/civitas_runs/{{NAME}}" if MYDRIVE else f"/content/civitas_runs/{{NAME}}"
 shutil.copytree(f"{{BUNDLE}}/code", WORK, dirs_exist_ok=True)
 shutil.copytree(f"{{BUNDLE}}/data", DATA, dirs_exist_ok=True)
 os.makedirs(RUNS, exist_ok=True)
@@ -68,8 +88,8 @@ sys.path.insert(0, WORK)
 manifest = json.load(open(f"{{DATA}}/manifest.json"))
 for name, digest in manifest["files"].items():
     h = hashlib.sha256(open(f"{{DATA}}/{{name}}", "rb").read()).hexdigest()
-    assert h == digest, f"{{name}} is corrupted (sha256 mismatch) - re-upload the bundle"
-print("bundle:", BUNDLE)
+    assert h == digest, f"{{name}} is corrupted (sha256 mismatch) - upload the zip again"
+print("bundle from:", src, "| saving runs to:", RUNS)
 for split, info in manifest["splits"].items():
     print(f"  {{split:>6}}: {{info['rows']:>7}} rows  {{info.get('language_counts')}}")
 print("built from commit", manifest["git_commit"], "at", manifest["created_at"])
@@ -95,14 +115,15 @@ XLM-RoBERTa encoder with 4 heads: hate yes/no, target group, severity, and which
 hateful (rationale). Languages: en, hi, ta, te, ml, kn, Roman Urdu.
 
 ## WHAT YOU DO
-1. Unzip `civitas_model_a.zip` on your PC and upload the **`civitas_model_a`** folder to
-   **My Drive** (or upload the zip itself to My Drive; the notebook unpacks it).
-2. Open `civitas_model_a/train_model_a.ipynb` from Drive with Google Colab.
-3. **Runtime → Change runtime type → T4 GPU** (L4/A100 if you have Pro), then **Runtime → Run all**.
-   Allow Drive access when asked.
-4. If Colab disconnects: reconnect and **Run all** again. Training resumes from the last save
+1. Do **not** unzip anything. Open https://colab.research.google.com → **File → Upload notebook**
+   → pick `train_model_a.ipynb`.
+2. **Runtime → Change runtime type → T4 GPU** (L4/A100 if you have Pro), then **Runtime → Run all**.
+   Allow Google Drive access when asked (that is where progress is saved).
+3. When the cell "Get the bundle" shows a **Choose files** button, pick `civitas_model_a.zip`.
+   (Or upload `civitas_model_a.zip` to My Drive beforehand; the notebook then finds it itself.)
+4. If Colab disconnects: reconnect and **Run all** again (pick the zip again if asked). Training resumes from the last save
    (at most ~500 steps are repeated).
-5. When it finishes, download the one file **`civitas_model_a/runs/civitas_model_a_trained.zip`**
+5. When it finishes, download the one file **My Drive → `civitas_runs/civitas_model_a/civitas_model_a_trained.zip`**
    (trained weights + all results) into your Civitas project folder and run
    `python scripts/install_models.py --check`. Do not unzip it by hand; the script puts
    every file where the app expects it.
@@ -156,7 +177,7 @@ print(ARGS)
     md('''
 ## Results (saved to files)
 Scores the best checkpoint on **val** (never test), runs the robustness probe, then writes
-`runs/model_a/results/` and the single file to download: `runs/civitas_model_a_trained.zip`.
+the single file to download: My Drive → `civitas_runs/civitas_model_a/civitas_model_a_trained.zip`.
 '''),
     code('''
 m = json.load(open(f"{OUT}/best_metrics.json"))
@@ -200,17 +221,18 @@ Hindi, Tamil, Telugu, Malayalam and Roman Urdu with IndicTrans2 ("silver" data) 
 learns every language. If that step fails, training still runs on English + Hindi.
 
 ## WHAT YOU DO
-1. Unzip `civitas_model_b.zip` on your PC and upload the **`civitas_model_b`** folder to
-   **My Drive** (or upload the zip itself to My Drive).
+1. Do **not** unzip anything. Open https://colab.research.google.com → **File → Upload notebook**
+   → pick `train_model_b.ipynb`. When the "Get the bundle" cell shows **Choose files**, pick
+   `civitas_model_b.zip` (or upload that zip to My Drive beforehand).
 2. Optional, for the silver step: on huggingface.co open
    `ai4bharat/indictrans2-en-indic-dist-200M`, accept its terms if asked, create a read token
    (Settings → Access Tokens) and add it in Colab under **🔑 Secrets** as `HF_TOKEN`.
-3. Optional: if Model A is trained, leave `civitas_model_a/runs/model_a/best_model.pt` on Drive;
+3. Optional: if Model A is trained, its checkpoint stays in My Drive → `civitas_runs/civitas_model_a/`;
    this notebook then also measures how often Model B's outputs are safe.
-4. Open `civitas_model_b/train_model_b.ipynb` with Colab → **Runtime → T4 GPU → Run all**.
+4. **Runtime → Change runtime type → T4 GPU → Run all**.
    About 30–60 min of translation, then 1.5–3 h of training. Re-run after a disconnect:
    finished languages and training steps are skipped.
-5. When it finishes, download the one file **`civitas_model_b/runs/civitas_model_b_trained.zip`**
+5. When it finishes, download the one file **My Drive → `civitas_runs/civitas_model_b/civitas_model_b_trained.zip`**
    (LoRA adapter + all results) into your Civitas project folder and run
    `python scripts/install_models.py --check`.
 6. Do **not** tick CONFIRM in the last cell until Claude says tuning is finished.
@@ -289,8 +311,8 @@ shutil.copy(f"{DATA}/manifest.json", f"{GEN}/manifest.json")
 # Step 3: training config. Every key is a train_gen.py flag
 RUN_NAME = "model_b"  #@param {type:"string"}
 OUT = f"{RUNS}/{RUN_NAME}"
-MODEL_A = next((p for r in ROOTS for p in glob.glob(f"{r}/civitas_model_a*/**/runs/model_a/best_model.pt",
-                                                     recursive=True)), "")
+MODEL_A = f"{os.path.dirname(RUNS)}/civitas_model_a/model_a/best_model.pt"
+MODEL_A = MODEL_A if os.path.exists(MODEL_A) else ""
 CONFIG = {
     "data_dir": GEN,
     "output_dir": OUT,
@@ -315,7 +337,7 @@ print(ARGS)
 '''),
     md('''
 ## Results (saved to files)
-Writes the single file to download: `runs/civitas_model_b_trained.zip` (adapter, metrics,
+Writes the single file to download: My Drive → `civitas_runs/civitas_model_b/civitas_model_b_trained.zip` (adapter, metrics,
 history, sample generations, silver stats).
 '''),
     code('''

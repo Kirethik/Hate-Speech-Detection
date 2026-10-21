@@ -21,28 +21,31 @@ make bundles       # -> artifacts/civitas_model_a.zip, artifacts/civitas_model_b
 Raw data lives in `data/raw/` (see `docs/SOURCES.md`). The notebooks are generated from
 `scripts/build_notebooks.py`: edit that file, not the .ipynb.
 
-## Training one bundle
+## Training one bundle (no folder upload needed)
 
-1. Unzip the bundle and upload the folder (`civitas_model_a` or `civitas_model_b`) to **My Drive**.
-   Uploading the zip itself to My Drive also works; the notebook unpacks it.
-2. Open the notebook inside the folder (`train_model_a.ipynb` / `train_model_b.ipynb`) with Colab.
-3. Runtime → Change runtime type → **T4 GPU** → **Run all**. Allow Drive access.
-4. Checkpoints and results go to `<bundle folder>/runs/` on Drive.
+1. Open https://colab.research.google.com → **File → Upload notebook** → pick
+   `notebooks/train_model_a.ipynb` (or `train_model_b.ipynb`). The same file is inside the zip.
+2. **Runtime → Change runtime type → T4 GPU → Run all.** Allow Google Drive access.
+3. In the "Get the bundle" cell a **Choose files** button appears: pick `civitas_model_a.zip`
+   (or `civitas_model_b.zip`). Alternatively upload the zip to My Drive (or drag it into
+   Colab's Files panel) first; the notebook finds it on its own.
+4. Checkpoints and the final model file go to **My Drive → `civitas_runs/<bundle>/`**.
 
 ## When Colab disconnects
 
 Reconnect, then **Run all** again. Training always passes `--resume` and continues from the last
 save on Drive; Model B's translation step skips languages that are already done.
+If you used the Choose files button, pick the zip again when asked.
 To start a fresh run instead, change `RUN_NAME` in the config cell.
 
 ## What comes back: one file per model
 
-Each notebook ends by writing a single file next to its bundle on Drive:
+Each notebook ends by writing a single file to Google Drive:
 
 | Model | Download this | Contains |
 |---|---|---|
-| A | `civitas_model_a/runs/civitas_model_a_trained.zip` | `best_model.pt` (fp16, ~0.55 GB) + all results |
-| B | `civitas_model_b/runs/civitas_model_b_trained.zip` | LoRA adapter + tokenizer + all results |
+| A | My Drive → `civitas_runs/civitas_model_a/civitas_model_a_trained.zip` | `best_model.pt` (fp16, ~0.55 GB) + all results |
+| B | My Drive → `civitas_runs/civitas_model_b/civitas_model_b_trained.zip` | LoRA adapter + tokenizer + all results |
 
 Put the file(s) in the project folder (or leave them in Downloads) and run:
 
