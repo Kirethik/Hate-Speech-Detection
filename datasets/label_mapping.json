@@ -1,0 +1,46 @@
+{
+  "detector": {
+    "binary": {
+      "0": "non_hateful",
+      "1": "hateful"
+    },
+    "severity": {
+      "0": "normal",
+      "1": "offensive_profanity",
+      "2": "hate"
+    },
+    "target_groups": {
+      "0": "none",
+      "1": "religion",
+      "2": "gender",
+      "3": "caste",
+      "4": "ethnicity",
+      "5": "disability",
+      "6": "political",
+      "7": "other"
+    }
+  },
+  "generator": {
+    "supported_tones": [
+      "calm",
+      "factual",
+      "firm",
+      "empathetic",
+      "professional"
+    ],
+    "tasks": [
+      "rewrite",
+      "respond"
+    ]
+  },
+  "languages": [
+    "en",
+    "hi",
+    "ur",
+    "ur_roman",
+    "ta",
+    "te",
+    "ml",
+    "kn"
+  ]
+}

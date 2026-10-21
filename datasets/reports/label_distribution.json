@@ -1,0 +1,13 @@
+{
+  "detector": {
+    "train.csv": {
+      "hateful_ratio": 0.4564
+    },
+    "validation.csv": {
+      "hateful_ratio": 0.4719
+    },
+    "test.csv": {
+      "hateful_ratio": 0.4719
+    }
+  }
+}

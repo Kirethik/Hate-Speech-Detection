@@ -1,0 +1,14 @@
+{
+  "detector_total_samples": 260403,
+  "generator_total_pairs": 82704,
+  "detector_splits": {
+    "train.csv": 229438,
+    "validation.csv": 15482,
+    "test.csv": 15483
+  },
+  "generator_splits": {
+    "train.csv": 74625,
+    "validation.csv": 4150,
+    "test.csv": 3929
+  }
+}
