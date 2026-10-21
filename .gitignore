@@ -11,6 +11,10 @@ data_baseline_4source/
 
 # ---- Model artifacts pulled from Drive (weights, ONNX, adapters) ----
 artifacts/
+model_artifacts/**
+!model_artifacts/**/.gitkeep
+datasets/raw/**
+!datasets/raw/**/README.md
 
 # ---- Model checkpoints (~1.1 GB each, over GitHub's 100 MB file limit) ----
 checkpoints/**
@@ -97,3 +101,16 @@ credentials.json
 *.swo
 .DS_Store
 Thumbs.db
+
+# Civitas Voice
+.venv-tts-*/
+data/voice/
+frontend/node_modules/
+frontend/dist/
+
+# local helper binaries (cloudflared)
+tools/
+
+# SSH keys
+sshkey
+sshkey.pub

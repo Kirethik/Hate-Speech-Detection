@@ -21,7 +21,8 @@ Languages: English, Hindi, Roman-Urdu, Tamil, Telugu, Malayalam (plus code-mixed
 
 ## Hardware reality
 
-- Local: RTX 3050 **6 GB**. Local is for inference, tests, and small debug runs only.
+- Local: Windows laptop, Intel Core Ultra 9 + Intel Arc GPU (PyTorch XPU; no CUDA). Local is for inference, tests, and small debug runs only.
+- Voice pipeline (pretrained models, no training): see `docs/VOICE_QUICKSTART.md` and `docs/VOICE_PIPELINE_GUIDE.md`.
 - **All real training happens in Google Colab.** You (Claude Code) cannot run Colab. You write the notebooks; the user runs them and reports results back. Every notebook must be runnable top-to-bottom, save checkpoints to Google Drive, and be resumable after a disconnect.
 
 ## Rules for how you work here
