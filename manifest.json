@@ -1,0 +1,34 @@
+{
+  "version": "1.0.0",
+  "detector_splits": {
+    "train.csv": {
+      "rows": 229438,
+      "sha256": "27eb2db03d3b0dd4263a851145d7feaf19c0cd348df292716b0935faaf3bedd2",
+      "hateful_ratio": 0.45641959919455366
+    },
+    "validation.csv": {
+      "rows": 15482,
+      "sha256": "181d5e8437db567461c5d007d73c1c01ba8b123dee3a7babec078786e7d77fc8",
+      "hateful_ratio": 0.47190285492830386
+    },
+    "test.csv": {
+      "rows": 15483,
+      "sha256": "e464cbba11230cde78c32d5967f38cd04c937d2a34e2d658156aa2394bf8cf47",
+      "hateful_ratio": 0.471872376154492
+    }
+  },
+  "generator_splits": {
+    "train.csv": {
+      "rows": 74625,
+      "sha256": "2da6b8d7aa20ed6d5652a6a537eb2928ba0f9ce015de8244c910db15094bcb3c"
+    },
+    "validation.csv": {
+      "rows": 4150,
+      "sha256": "e27c19bcff89200bbe885aac8c7256456bdcd55dd16fa4e561f86c283fa32880"
+    },
+    "test.csv": {
+      "rows": 3929,
+      "sha256": "f30cf952d29a08873e260a14fe6e26730c6a8cfa218de9d628bf3735e8530b49"
+    }
+  }
+}
